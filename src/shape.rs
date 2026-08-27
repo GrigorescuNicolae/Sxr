@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::font;
 pub use crate::font::{Align, TextOpts};
+use crate::i18n::{Msg, t};
 
 /// Culorile implicite din ShareX (AnnotationOptions.cs).
 pub const PRIMARY: Color32 = Color32::from_rgb(242, 60, 60);
@@ -100,32 +101,38 @@ impl Tool {
         }
     }
 
-    pub fn tooltip(self) -> &'static str {
+    /// Cheia de traducere a numelui uneltei.
+    pub fn msg(self) -> Msg {
         match self {
-            Tool::Select => "Mutare și redimensionare (M)",
-            Tool::Rect => "Dreptunghi (R)",
-            Tool::Ellipse => "Elipsă (E)",
-            Tool::Freehand => "Desen liber (F)",
-            Tool::FreehandArrow => "Săgeată liberă",
-            Tool::Line => "Linie (L)",
-            Tool::Arrow => "Săgeată (A)",
-            Tool::TextOutline => "Text (contur) (O)",
-            Tool::TextBackground => "Text (fundal) (T)",
-            Tool::SpeechBalloon => "Balon de dialog (S)",
-            Tool::Step => "Numărător de pași (I)",
-            Tool::Magnify => "Lupă",
-            Tool::ImageFile => "Imagine (fișier)",
-            Tool::ImageScreen => "Imagine (ecran)",
-            Tool::Sticker => "Sticker",
-            Tool::Cursor => "Cursor",
-            Tool::SmartEraser => "Gumă inteligentă",
-            Tool::Blur => "Blur (B)",
-            Tool::Pixelate => "Pixelare (P)",
-            Tool::Highlight => "Evidențiere (H)",
-            Tool::Spotlight => "Reflector",
-            Tool::Crop => "Decupare (C)",
-            Tool::CutOut => "Tăiere fâșie (X)",
+            Tool::Select => Msg::ToolSelect,
+            Tool::Rect => Msg::ToolRect,
+            Tool::Ellipse => Msg::ToolEllipse,
+            Tool::Freehand => Msg::ToolFreehand,
+            Tool::FreehandArrow => Msg::ToolFreehandArrow,
+            Tool::Line => Msg::ToolLine,
+            Tool::Arrow => Msg::ToolArrow,
+            Tool::TextOutline => Msg::ToolTextOutline,
+            Tool::TextBackground => Msg::ToolTextBackground,
+            Tool::SpeechBalloon => Msg::ToolSpeechBalloon,
+            Tool::Step => Msg::ToolStep,
+            Tool::Magnify => Msg::ToolMagnify,
+            Tool::ImageFile => Msg::ToolImageFile,
+            Tool::ImageScreen => Msg::ToolImageScreen,
+            Tool::Sticker => Msg::ToolSticker,
+            Tool::Cursor => Msg::ToolCursor,
+            Tool::SmartEraser => Msg::ToolSmartEraser,
+            Tool::Blur => Msg::ToolBlur,
+            Tool::Pixelate => Msg::ToolPixelate,
+            Tool::Highlight => Msg::ToolHighlight,
+            Tool::Spotlight => Msg::ToolSpotlight,
+            Tool::Crop => Msg::ToolCrop,
+            Tool::CutOut => Msg::ToolCutOut,
         }
+    }
+
+    /// Numele uneltei în limba curentă, cum apare în bară.
+    pub fn tooltip(self) -> &'static str {
+        t(self.msg())
     }
 
     /// Scurtătura din ShapeManager.cs. Numpad-ul e legat separat în app.rs.
@@ -1067,15 +1074,46 @@ fn in_tri(p: Pos2, a: Pos2, b: Pos2, c: Pos2) -> bool {
 }
 
 /// Colțul opus rămâne ancorat la redimensionare, exact ca în ShareX.
+/// Cele opt noduri ale unui dreptunghi, în ordinea din `NodePosition`:
+/// colț stânga-sus, mijloc sus, colț dreapta-sus, mijloc dreapta, colț
+/// dreapta-jos, mijloc jos, colț stânga-jos, mijloc stânga.
+pub fn rect_nodes(rect: Rect) -> Vec<Pos2> {
+    let r = Rect::from_two_pos(rect.min, rect.max);
+    let (cx, cy) = (r.center().x, r.center().y);
+    vec![
+        r.left_top(),
+        Pos2::new(cx, r.min.y),
+        r.right_top(),
+        Pos2::new(r.max.x, cy),
+        r.right_bottom(),
+        Pos2::new(cx, r.max.y),
+        r.left_bottom(),
+        Pos2::new(r.min.x, cy),
+    ]
+}
+
+/// Nodurile de colț mută ambele coordonate, cele de pe laturi doar una —
+/// latura opusă rămâne pe loc, ca în ShareX.
 fn resize(rect: Rect, idx: usize, p: Pos2) -> Rect {
     let r = Rect::from_two_pos(rect.min, rect.max);
-    let anchor = match idx {
-        0 => r.right_bottom(),
-        1 => r.left_bottom(),
-        2 => r.left_top(),
-        _ => r.right_top(),
-    };
-    Rect::from_two_pos(anchor, p)
+    let (mut min, mut max) = (r.min, r.max);
+    match idx {
+        0 => min = p,
+        1 => min.y = p.y,
+        2 => {
+            max.x = p.x;
+            min.y = p.y;
+        }
+        3 => max.x = p.x,
+        4 => max = p,
+        5 => max.y = p.y,
+        6 => {
+            min.x = p.x;
+            max.y = p.y;
+        }
+        _ => min.x = p.x,
+    }
+    Rect::from_two_pos(min, max)
 }
 
 fn dist_seg(p: Pos2, a: Pos2, b: Pos2) -> f32 {
@@ -1211,14 +1249,12 @@ impl Shape {
             | Shape::Erase { rect, .. }
             | Shape::Magnify { rect, .. }
             | Shape::Img { rect, .. }
-            | Shape::Text { rect, .. } => {
-                let r = Rect::from_two_pos(rect.min, rect.max);
-                vec![r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()]
-            }
-            // al cincilea mâner al balonului e vârful cozii
+            | Shape::Text { rect, .. } => rect_nodes(*rect),
+            // al nouălea mâner al balonului e vârful cozii, ca `NodePosition::Extra`
             Shape::Balloon { rect, tail, .. } => {
-                let r = Rect::from_two_pos(rect.min, rect.max);
-                vec![r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), *tail]
+                let mut v = rect_nodes(*rect);
+                v.push(*tail);
+                v
             }
             // capătul de plecare, nodurile de curbură, capătul final
             Shape::Arrow { from, to, mid, .. } | Shape::Line { from, to, mid, .. } => {
@@ -1242,7 +1278,7 @@ impl Shape {
             | Shape::Text { rect, .. } => *rect = resize(*rect, idx, p),
             // vârful cozii se mută independent de casetă
             Shape::Balloon { rect, tail, .. } => {
-                if idx >= 4 {
+                if idx >= 8 {
                     *tail = p;
                 } else {
                     *rect = resize(*rect, idx, p);

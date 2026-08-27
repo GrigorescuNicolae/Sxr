@@ -33,20 +33,20 @@ pub fn copy_png(png: Vec<u8>) -> Result<()> {
     let previous = std::fs::read_to_string(pid_file())
         .ok()
         .and_then(|t| t.trim().parse::<i32>().ok());
-    let exe = std::env::current_exe().context("nu-mi găsesc propriul executabil")?;
+    let exe = std::env::current_exe().context("cannot locate own executable")?;
     let mut child = Command::new(exe)
         .arg(SERVE_FLAG)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("nu am putut porni serverul de clipboard")?;
+        .context("could not start the clipboard server")?;
     child
         .stdin
         .take()
-        .context("subprocesul nu are stdin")?
+        .context("child process has no stdin")?
         .write_all(&png)
-        .context("nu am putut trimite imaginea catre serverul de clipboard")?;
+        .context("could not send the image to the clipboard server")?;
 
     // abia după ce noul server a primit datele închidem vechiul,
     // ca să nu rămână clipboard-ul gol între cele două
@@ -59,9 +59,9 @@ pub fn copy_png(png: Vec<u8>) -> Result<()> {
 /// până când altcineva pune altceva în clipboard.
 pub fn serve_from_stdin() -> Result<()> {
     let mut buf = Vec::new();
-    std::io::stdin().read_to_end(&mut buf).context("citire stdin")?;
+    std::io::stdin().read_to_end(&mut buf).context("reading stdin")?;
     if buf.is_empty() {
-        bail!("nimic de servit");
+        bail!("nothing to serve");
     }
     let mut opts = Options::new();
     // blocant intenționat: ăsta e singurul rost al procesului
@@ -70,7 +70,7 @@ pub fn serve_from_stdin() -> Result<()> {
         Source::Bytes(buf.into_boxed_slice()),
         MimeType::Specific("image/png".into()),
     )
-    .context("oferire in clipboard esuata")?;
+    .context("offering to the clipboard failed")?;
     Ok(())
 }
 
@@ -78,7 +78,7 @@ pub fn serve_from_stdin() -> Result<()> {
 pub fn mime_types() -> Result<Vec<String>> {
     use wl_clipboard_rs::paste::{get_mime_types, ClipboardType, Seat};
     let set = get_mime_types(ClipboardType::Regular, Seat::Unspecified)
-        .map_err(|e| anyhow::anyhow!("citire clipboard: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("reading clipboard: {e}"))?;
     let mut v: Vec<String> = set.into_iter().collect();
     v.sort();
     Ok(v)
@@ -92,9 +92,9 @@ pub fn paste_to_file(path: &str) -> Result<usize> {
         Seat::Unspecified,
         wl_clipboard_rs::paste::MimeType::Specific("image/png"),
     )
-    .map_err(|e| anyhow::anyhow!("citire clipboard: {e}"))?;
+    .map_err(|e| anyhow::anyhow!("reading clipboard: {e}"))?;
     let mut buf = Vec::new();
-    pipe.read_to_end(&mut buf).context("citire pipe clipboard")?;
-    std::fs::write(path, &buf).context("scriere fisier")?;
+    pipe.read_to_end(&mut buf).context("reading clipboard pipe")?;
+    std::fs::write(path, &buf).context("writing file")?;
     Ok(buf.len())
 }

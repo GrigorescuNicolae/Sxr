@@ -3,11 +3,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use eframe::egui::containers::menu::MenuButton;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, TextureHandle, Vec2};
 use image::RgbaImage;
 
 use crate::clip;
+use crate::config;
 use crate::font;
+use crate::i18n::{self, Msg, t};
 use crate::icons::Icons;
 use crate::render;
 use crate::shape::{self, Shape, Tool};
@@ -15,7 +18,7 @@ use crate::shape::{self, Shape, Tool};
 /// Lățimea barei de unelte în puncte — fereastra nu coboară sub ea,
 /// altfel meniurile din dreapta ar ieși din cadru (Wayland ignoră
 /// redimensionarea cerută de aplicație după creare).
-const BAR_W: f32 = 1112.0;
+pub const BAR_W: f32 = 1112.0;
 
 /// Nodul de redimensionare, ca `Resources/CircleNode.png` din ShareX: un disc
 /// alb plin de 18px, într-o casetă de 24px. Varianta desenată cu contur din
@@ -34,15 +37,199 @@ pub fn run(img: RgbaImage) -> Result<()> {
                 (h as f32 + 108.0).min(980.0),
             ])
             .with_min_inner_size([BAR_W, 340.0])
-            .with_title("sxr — editor"),
+            .with_title(t(Msg::WindowTitle)),
         ..Default::default()
     };
     eframe::run_native(
         "sxr",
         opts,
-        Box::new(move |cc| Ok(Box::new(Editor::new(cc, img)) as Box<dyn eframe::App>)),
+        Box::new(move |cc| Ok(Box::new(Editor::new(&cc.egui_ctx, img)) as Box<dyn eframe::App>)),
     )
     .map_err(|e| anyhow::anyhow!("eframe: {e}"))
+}
+
+/// Măsurătoare neinteractivă a lățimii barei, pentru `--i18n-check`: bara
+/// conține numai iconițe și meniuri cu iconiță, deci limba n-ar trebui s-o
+/// schimbe — dar `BAR_W` e lățimea minimă a ferestrei, deci merită verificat.
+/// egui așază totul pe CPU, așa că nu e nevoie de fereastră.
+pub fn bar_width(l: i18n::Lang) -> f32 {
+    i18n::set_lang(l);
+    let ctx = egui::Context::default();
+    font::install(&ctx);
+    let mut ed = Editor::new(&ctx, RgbaImage::new(16, 16));
+    // primul cadru încarcă fonturile și texturile; măsura bună vine după
+    for _ in 0..3 {
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            let icons = ed.icons.clone();
+            let mut acts = Vec::new();
+            ed.toolbar(ui, &icons, &mut acts);
+        });
+    }
+    ed.bar_w
+}
+
+/// Randare neinteractivă a ferestrei de text, pentru `--dlg-test`: aceeași
+/// `text_dialog_ui`, într-un context egui care lucrează numai pe CPU — tehnica
+/// de la `bar_width`, plus un rasterizor propriu pentru triunghiurile scoase de
+/// egui. Fundalul rămâne magenta, ca marginile ferestrei să se poată măsura.
+pub fn text_dialog_shot(path: &str) -> Result<()> {
+    shot(path, 660, 540, |ctx, ed| {
+        let mut acts = Vec::new();
+        ed.text_dialog_ui(ctx, &mut acts);
+    })
+}
+
+/// Aceeași randare, dar pentru bara de unelte: `--bar-test`.
+pub fn toolbar_shot(path: &str) -> Result<()> {
+    shot(path, 1160, 60, |ctx, ed| {
+        let icons = ed.icons.clone();
+        let mut acts = Vec::new();
+        // panourile cer un `Ui`, pe care aici nu-l avem, deci punem bara
+        // într-o zonă cu fundalul panoului, ca să se vadă ca în aplicație
+        egui::Area::new("bara".into())
+            .fixed_pos(Pos2::ZERO)
+            .show(ctx, |ui| {
+                let fill = ui.visuals().panel_fill;
+                egui::Frame::new()
+                    .fill(fill)
+                    .inner_margin(6)
+                    .show(ui, |ui| ed.toolbar(ui, &icons, &mut acts));
+            });
+    })
+}
+
+fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut Editor)) -> Result<()> {
+    let ctx = egui::Context::default();
+    font::install(&ctx);
+    let mut ed = Editor::new(&ctx, RgbaImage::new(16, 16));
+    let input = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(sw as f32, sh as f32))),
+        ..Default::default()
+    };
+    // id-ul texturii -> (lățime, înălțime, pixeli premultiplicați)
+    let mut tex: std::collections::HashMap<egui::TextureId, (usize, usize, Vec<Color32>)> =
+        std::collections::HashMap::new();
+    let mut prims = Vec::new();
+    // primele cadre încarcă fonturile, așază fereastra și-i termină apariția
+    // treptată (`Area::fade_in`); desenul bun vine abia după ele
+    for _ in 0..16 {
+        font::sync();
+        ctx.begin_pass(input.clone());
+        draw(&ctx, &mut ed);
+        let out = ctx.end_pass();
+        for (id, deltas) in &out.textures_delta.set {
+            for delta in deltas {
+                let src = match &delta.image {
+                    egui::epaint::ImageData::Color(i) => i,
+                };
+                let [dw, dh] = src.size;
+                match delta.pos {
+                    None => {
+                        tex.insert(*id, (dw, dh, src.pixels.clone()));
+                    }
+                    Some([ox, oy]) => {
+                        if let Some((w, _, buf)) = tex.get_mut(id) {
+                            for row in 0..dh {
+                                for col in 0..dw {
+                                    buf[(oy + row) * *w + ox + col] = src.pixels[row * dw + col];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        prims = ctx.tessellate(out.shapes, out.pixels_per_point);
+    }
+
+    let mut img = RgbaImage::from_pixel(sw, sh, image::Rgba([255, 0, 255, 255]));
+    for cp in &prims {
+        let egui::epaint::Primitive::Mesh(m) = &cp.primitive else { continue };
+        let Some((tw, th, tp)) = tex.get(&m.texture_id) else { continue };
+        for tri in m.indices.chunks_exact(3) {
+            let v = [
+                m.vertices[tri[0] as usize],
+                m.vertices[tri[1] as usize],
+                m.vertices[tri[2] as usize],
+            ];
+            let area = edge(v[0].pos, v[1].pos, v[2].pos);
+            if area.abs() < 1e-6 {
+                continue;
+            }
+            let xs = [v[0].pos.x, v[1].pos.x, v[2].pos.x];
+            let ys = [v[0].pos.y, v[1].pos.y, v[2].pos.y];
+            let lo = |a: [f32; 3], min: f32| a.iter().cloned().fold(f32::MAX, f32::min).max(min);
+            let hi = |a: [f32; 3], max: f32| a.iter().cloned().fold(f32::MIN, f32::max).min(max);
+            let x0 = lo(xs, cp.clip_rect.left().max(0.0)).floor() as i32;
+            let x1 = hi(xs, cp.clip_rect.right().min(sw as f32)).ceil() as i32;
+            let y0 = lo(ys, cp.clip_rect.top().max(0.0)).floor() as i32;
+            let y1 = hi(ys, cp.clip_rect.bottom().min(sh as f32)).ceil() as i32;
+            for y in y0.max(0)..y1.min(sh as i32) {
+                for x in x0.max(0)..x1.min(sw as i32) {
+                    let p = egui::pos2(x as f32 + 0.5, y as f32 + 0.5);
+                    let l0 = edge(v[1].pos, v[2].pos, p) / area;
+                    let l1 = edge(v[2].pos, v[0].pos, p) / area;
+                    let l2 = 1.0 - l0 - l1;
+                    if l0 < -1e-4 || l1 < -1e-4 || l2 < -1e-4 {
+                        continue;
+                    }
+                    let u = l0 * v[0].uv.x + l1 * v[1].uv.x + l2 * v[2].uv.x;
+                    let w = l0 * v[0].uv.y + l1 * v[1].uv.y + l2 * v[2].uv.y;
+                    let texel = sample(tp, *tw, *th, u, w);
+                    let chan = |f: fn(&Color32) -> u8| {
+                        l0 * f(&v[0].color) as f32
+                            + l1 * f(&v[1].color) as f32
+                            + l2 * f(&v[2].color) as f32
+                    };
+                    // ambele sunt premultiplicate, deci înmulțirea e pe canale
+                    let src = [
+                        chan(|c| c.r()) * texel[0] / 255.0,
+                        chan(|c| c.g()) * texel[1] / 255.0,
+                        chan(|c| c.b()) * texel[2] / 255.0,
+                        chan(|c| c.a()) * texel[3] / 255.0,
+                    ];
+                    let inv = 1.0 - src[3] / 255.0;
+                    let px = img.get_pixel_mut(x as u32, y as u32);
+                    for k in 0..3 {
+                        px.0[k] = (src[k] + px.0[k] as f32 * inv).clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
+        }
+    }
+    img.save(path).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
+    println!("scris {path}");
+    Ok(())
+}
+
+/// Aria cu semn a triunghiului `a b c`, dublă. Zero = punctele sunt coliniare.
+fn edge(a: Pos2, b: Pos2, c: Pos2) -> f32 {
+    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+/// Citire biliniară din atlasul de texturi, cu coordonate normalizate.
+fn sample(px: &[Color32], w: usize, h: usize, u: f32, v: f32) -> [f32; 4] {
+    if w == 0 || h == 0 {
+        return [0.0; 4];
+    }
+    let fx = (u * w as f32 - 0.5).clamp(0.0, w as f32 - 1.0);
+    let fy = (v * h as f32 - 0.5).clamp(0.0, h as f32 - 1.0);
+    let (x0, y0) = (fx.floor() as usize, fy.floor() as usize);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+    let mut out = [0.0f32; 4];
+    for (c, wt) in [
+        (px[y0 * w + x0], (1.0 - tx) * (1.0 - ty)),
+        (px[y0 * w + x1], tx * (1.0 - ty)),
+        (px[y1 * w + x0], (1.0 - tx) * ty),
+        (px[y1 * w + x1], tx * ty),
+    ] {
+        out[0] += c.r() as f32 * wt;
+        out[1] += c.g() as f32 * wt;
+        out[2] += c.b() as f32 * wt;
+        out[3] += c.a() as f32 * wt;
+    }
+    out
 }
 
 /// Snapshot pentru undo. Imaginea e clonată doar la decupare,
@@ -265,16 +452,10 @@ struct Editor {
     dialog: Option<Dialog>,
 }
 
-fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-}
-
 /// ~/Pictures dacă există, altfel directorul personal.
 fn pictures_dir() -> PathBuf {
-    let p = home().join("Pictures");
-    if p.is_dir() { p } else { home() }
+    let p = config::home().join("Pictures");
+    if p.is_dir() { p } else { config::home() }
 }
 
 /// ~/.local/share/sxr/stickers, cu XDG_DATA_HOME respectat.
@@ -282,7 +463,7 @@ fn stickers_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home().join(".local/share"))
+        .unwrap_or_else(|| config::home().join(".local/share"))
         .join("sxr")
         .join("stickers")
 }
@@ -317,6 +498,169 @@ fn to_color_image(img: &RgbaImage) -> egui::ColorImage {
 /// Culoarea transparentă se vede ca tablă de șah, tot ca în ShareX.
 /// Fundal de contrast pentru zona de scris, ca în `ColorHelpers.VisibleColor`:
 /// alb sub un text închis, gri închis sub unul deschis.
+// --------------------------------------- fereastra de introducere a textului
+
+/// Latura butoanelor pătrate din fereastra de text. În
+/// `TextDrawingInputBox.Designer.cs` toate au `Size = 24, 24`:
+/// culoarea, B / I / U, cele două alinieri și butonul din stânga-jos.
+const TDLG_BTN: f32 = 24.0;
+/// Lățimea listei de fonturi (`cbFonts.Size = 158, 21`).
+const TDLG_FONT_W: f32 = 158.0;
+/// Lățimea câmpului numeric fără săgeți (`nudTextSize.Size = 55, 20`).
+const TDLG_NUM_W: f32 = 40.0;
+/// Lățimea săgeților lipite în dreapta câmpului numeric.
+const TDLG_ARROW_W: f32 = 14.0;
+/// Lățimea butoanelor OK și Renunță (`btnOK.Size = 104, 24`).
+const TDLG_OK_W: f32 = 104.0;
+/// Lățimea zonei utile a ferestrei originale (`$this.ClientSize = 534, 361`);
+/// sub ea bara de sus n-ar mai încăpea pe un rând, deci e și lățimea minimă.
+const TDLG_W: f32 = 534.0;
+/// Fereastra la deschidere. `egui::Window` își desenează singură bara de titlu,
+/// deci pornim de la dimensiunea exterioară a originalului, nu de la zona utilă:
+/// 547x421, cât măsoară `TextDrawingInputBox` pe ecran.
+const TDLG_WIN_W: f32 = 547.0;
+const TDLG_WIN_H: f32 = 421.0;
+
+/// Butonul pătrat de 24x24 folosit de toate uneltele cu pictogramă.
+fn square_button<'a>() -> egui::Button<'a> {
+    egui::Button::new("").min_size(Vec2::splat(TDLG_BTN))
+}
+
+/// B / I / U: buton pătrat cu litera pe el, apăsat cât stilul e pornit.
+/// În original sunt `CheckBox`-uri cu `Appearance.Button`, adică exact asta.
+fn style_toggle(ui: &mut egui::Ui, on: &mut bool, letter: egui::RichText, tip: Msg) {
+    let r = ui.add(
+        egui::Button::new(letter)
+            .selected(*on)
+            .min_size(Vec2::splat(TDLG_BTN)),
+    );
+    if r.clicked() {
+        *on = !*on;
+    }
+    r.on_hover_text(t(tip));
+}
+
+/// `NumericUpDown` din WinForms: egui n-are așa ceva, deci lipim un `DragValue`
+/// îngust de două butoane mici cu săgeți, într-o coloană fără spațiere.
+fn num_up_down(ui: &mut egui::Ui, v: &mut f32) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        ui.horizontal(|ui| {
+            // `nudTextSize`: minim 5, maxim 300, afișat ca întreg
+            let dv = egui::DragValue::new(v)
+                .range(5.0..=300.0)
+                .speed(0.2)
+                .fixed_decimals(0);
+            ui.add_sized([TDLG_NUM_W, TDLG_BTN], dv);
+
+            // Cele două săgeți sunt UN singur widget, împărțit în jumătăți:
+            // ca butoane separate, fiecare își cere înălțimea lui minimă și
+            // coloana iese mai înaltă decât câmpul, coborâtă față de el.
+            ui.add_space(3.0);
+            let (rect, resp) =
+                ui.allocate_exact_size(Vec2::new(TDLG_ARROW_W, TDLG_BTN), Sense::click());
+            let up_r = Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y));
+            let down_r = Rect::from_min_max(egui::pos2(rect.min.x, rect.center().y), rect.max);
+            let hovered = resp.hover_pos();
+            for (half, up) in [(up_r, true), (down_r, false)] {
+                let hot = hovered.is_some_and(|p| half.contains(p));
+                let vis = if hot {
+                    &ui.style().visuals.widgets.hovered
+                } else {
+                    &ui.style().visuals.widgets.inactive
+                };
+                ui.painter()
+                    .rect_filled(half.shrink(0.5), vis.corner_radius, vis.bg_fill);
+                paint_spinner(ui.painter(), half, up, vis.fg_stroke.color);
+            }
+            if resp.clicked() {
+                let up = resp.interact_pointer_pos().is_some_and(|p| up_r.contains(p));
+                *v = if up { (*v + 1.0).min(300.0) } else { (*v - 1.0).max(5.0) };
+            }
+        });
+    });
+}
+
+/// Săgeata unui buton de `NumericUpDown`: triunghi plin, în sus sau în jos.
+fn paint_spinner(p: &egui::Painter, rect: Rect, up: bool, c: Color32) {
+    let m = rect.center();
+    let (w, h) = (3.5, 2.0);
+    let y = if up { -h } else { h };
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(m.x - w, m.y - y),
+            egui::pos2(m.x + w, m.y - y),
+            egui::pos2(m.x, m.y + y),
+        ],
+        c,
+        egui::Stroke::NONE,
+    ));
+}
+
+/// Pictograma de aliniere pe orizontală, după `edit-alignment*` din setul Fugue
+/// (nu e printre iconițele deja aduse în `assets/icons`, deci o desenăm):
+/// patru liniuțe, lungi și scurte alternativ, împinse spre marginea aleasă.
+fn paint_align_h(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
+    let b = Rect::from_center_size(rect.center(), Vec2::splat(14.0));
+    for (i, long) in [true, false, true, false].into_iter().enumerate() {
+        let w = if long { b.width() } else { b.width() * 0.6 };
+        let x = match a {
+            _ if long => b.left(),
+            shape::Align::Near => b.left(),
+            shape::Align::Center => b.left() + (b.width() - w) / 2.0,
+            shape::Align::Far => b.right() - w,
+        };
+        let y = b.top() + i as f32 * 4.0;
+        let bar = Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, 2.0));
+        p.rect_filled(bar, 0.0, c);
+    }
+}
+
+/// Pictograma de aliniere pe verticală, după `edit-vertical-alignment*`:
+/// o liniuță lungă pe marginea aleasă și două scurte de partea cealaltă.
+fn paint_align_v(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
+    let b = Rect::from_center_size(rect.center(), Vec2::splat(14.0));
+    let bar = |y: f32, w: f32| {
+        let x = b.left() + (b.width() - w) / 2.0;
+        p.rect_filled(
+            Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, 2.0)),
+            0.0,
+            c,
+        );
+    };
+    let short = b.width() * 0.6;
+    match a {
+        shape::Align::Near => {
+            bar(b.top(), b.width());
+            bar(b.top() + 5.0, short);
+            bar(b.top() + 9.0, short);
+        }
+        shape::Align::Center => {
+            bar(b.top() + 1.0, short);
+            bar(b.top() + 6.0, b.width());
+            bar(b.top() + 11.0, short);
+        }
+        shape::Align::Far => {
+            bar(b.top() + 3.0, short);
+            bar(b.top() + 7.0, short);
+            bar(b.bottom() - 2.0, b.width());
+        }
+    }
+}
+
+/// Pictograma butonului din stânga-jos (`btnSwapEnterKey`, iconița Fugue
+/// `keyboard-enter`): săgeata de Enter, cu cotul în dreapta-sus.
+fn paint_enter_key(p: &egui::Painter, rect: Rect, c: Color32) {
+    let b = Rect::from_center_size(rect.center(), Vec2::splat(12.0));
+    let s = egui::Stroke::new(1.5, c);
+    let corner = egui::pos2(b.right(), b.bottom() - 3.0);
+    let tip = egui::pos2(b.left() + 1.0, b.bottom() - 3.0);
+    p.line_segment([egui::pos2(b.right(), b.top()), corner], s);
+    p.line_segment([corner, tip], s);
+    p.line_segment([tip, egui::pos2(tip.x + 4.0, tip.y - 4.0)], s);
+    p.line_segment([tip, egui::pos2(tip.x + 4.0, tip.y + 4.0)], s);
+}
+
 fn visible_bg(c: Color32) -> Color32 {
     let l = 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
     if l > 128.0 {
@@ -401,8 +745,7 @@ fn color_button(ui: &mut egui::Ui, id_salt: &str, color: &mut Color32, hole: f32
 }
 
 impl Editor {
-    fn new(cc: &eframe::CreationContext<'_>, img: RgbaImage) -> Self {
-        let ctx = &cc.egui_ctx;
+    fn new(ctx: &egui::Context, img: RgbaImage) -> Self {
         font::install(ctx);
         ctx.set_theme(egui::Theme::Dark);
         let icons = Rc::new(Icons::load(ctx));
@@ -466,7 +809,7 @@ impl Editor {
             let back = self.restore(s);
             self.redo.push(back);
         } else {
-            self.status = "nimic de anulat".into();
+            self.status = t(Msg::StNothingToUndo).into();
         }
     }
 
@@ -475,7 +818,7 @@ impl Editor {
             let back = self.restore(s);
             self.undo.push(back);
         } else {
-            self.status = "nimic de refăcut".into();
+            self.status = t(Msg::StNothingToRedo).into();
         }
     }
 
@@ -714,7 +1057,7 @@ impl Editor {
     fn stamp(&mut self, ctx: &egui::Context, at: Pos2, img: Arc<RgbaImage>) {
         let (iw, ih) = (img.width() as f32, img.height() as f32);
         if iw < 1.0 || ih < 1.0 {
-            self.status = "imaginea e goală".into();
+            self.status = t(Msg::StEmptyImage).into();
             return;
         }
         let k = (self.img.width() as f32 / iw)
@@ -733,14 +1076,14 @@ impl Editor {
         // următor (vezi `ui`) și forma abia pusă n-ar mai putea fi trasă
         self.tool = Tool::Select;
         self.sel = Some(self.shapes.len() - 1);
-        self.status = format!("imagine inserată ({}x{})", iw as u32, ih as u32);
+        self.status = i18n::image_inserted(iw as u32, ih as u32);
     }
 
     /// Încarcă un fișier de pe disc și îl ștampilează. La eroare doar anunță.
     fn stamp_file(&mut self, ctx: &egui::Context, at: Pos2, path: &Path) {
         match image::open(path) {
             Ok(i) => self.stamp(ctx, at, Arc::new(i.to_rgba8())),
-            Err(e) => self.status = format!("nu pot deschide {}: {e}", path.display()),
+            Err(e) => self.status = i18n::cannot_open(&path.display().to_string(), &e.to_string()),
         }
     }
 
@@ -750,7 +1093,7 @@ impl Editor {
             const PNG: &[u8] = include_bytes!("../assets/cursor.png");
             match image::load_from_memory(PNG) {
                 Ok(i) => self.cursor = Some(Arc::new(i.to_rgba8())),
-                Err(e) => self.status = format!("cursor.png nu se poate decoda: {e}"),
+                Err(e) => self.status = i18n::cannot_decode_cursor(&e.to_string()),
             }
         }
         self.cursor.clone()
@@ -768,7 +1111,7 @@ impl Editor {
             Tool::Sticker => {
                 let dir = stickers_dir();
                 if let Err(e) = std::fs::create_dir_all(&dir) {
-                    self.status = format!("nu pot crea {}: {e}", dir.display());
+                    self.status = i18n::cannot_create(&dir.display().to_string(), &e.to_string());
                     return;
                 }
                 // dialogul pe un director gol n-ar avea ce arăta
@@ -776,7 +1119,7 @@ impl Editor {
                     .map(|it| !it.flatten().any(|e| e.path().is_file()))
                     .unwrap_or(true);
                 if empty {
-                    self.status = format!("pune fișiere PNG în {}", dir.display());
+                    self.status = i18n::put_png_files_in(&dir.display().to_string());
                     return;
                 }
                 if let Some(p) = pick_image(&dir) {
@@ -796,7 +1139,7 @@ impl Editor {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                 ctx.request_repaint();
                 self.pending = Some(Pending::Screen { at, center: false });
-                self.status = "selectează regiunea de pe ecran".into();
+                self.status = t(Msg::StSelectRegion).into();
             }
             _ => {}
         }
@@ -852,7 +1195,7 @@ impl Editor {
                             self.center_last();
                         }
                     }
-                    Err(e) => self.status = format!("captură anulată: {e:#}"),
+                    Err(e) => self.status = i18n::capture_cancelled(&format!("{e:#}")),
                 }
             }
         }
@@ -914,13 +1257,16 @@ impl Editor {
         if let Some(s) = self.shapes.get_mut(t.idx) {
             s.set_text(t.buf, t.opts, t.color2);
         }
+        // ca în ShareX: după închiderea ferestrei caseta rămâne activă, cu
+        // nodurile la vedere, ca să se poată muta sau redimensiona imediat
+        self.sel = Some(t.idx);
     }
 
     // ------------------------------------------------------------- editare
 
     fn delete_sel(&mut self) {
         let Some(i) = self.sel.take() else {
-            self.status = "nicio formă selectată".into();
+            self.status = t(Msg::StNoShapeSelected).into();
             return;
         };
         if i < self.shapes.len() {
@@ -941,7 +1287,7 @@ impl Editor {
 
     fn duplicate(&mut self) {
         let Some(i) = self.sel else {
-            self.status = "nicio formă selectată".into();
+            self.status = t(Msg::StNoShapeSelected).into();
             return;
         };
         let Some(mut c) = self.shapes.get(i).cloned() else { return };
@@ -953,7 +1299,7 @@ impl Editor {
 
     fn reorder(&mut self, a: Act) {
         let Some(i) = self.sel else {
-            self.status = "nicio formă selectată".into();
+            self.status = t(Msg::StNoShapeSelected).into();
             return;
         };
         if i >= self.shapes.len() {
@@ -1002,7 +1348,7 @@ impl Editor {
         }
         self.tex.set(to_color_image(&self.img), egui::TextureOptions::LINEAR);
         self.sel = None;
-        self.status = format!("decupat la {}x{}", self.img.width(), self.img.height());
+        self.status = i18n::cropped_to(self.img.width(), self.img.height());
     }
 
     /// Taie o fâșie din imagine și lipește cele două jumătăți. Aceeași
@@ -1021,7 +1367,7 @@ impl Editor {
         }
         self.tex.set(to_color_image(&self.img), egui::TextureOptions::LINEAR);
         self.sel = None;
-        self.status = format!("tăiat la {}x{}", self.img.width(), self.img.height());
+        self.status = i18n::cut_out_to(self.img.width(), self.img.height());
     }
 
 
@@ -1043,7 +1389,7 @@ impl Editor {
         {
             Ok(i) => Some(i),
             Err(e) => {
-                self.status = format!("nu pot aplica formele: {e:#}");
+                self.status = i18n::cannot_apply_shapes(&format!("{e:#}"));
                 None
             }
         }
@@ -1067,11 +1413,7 @@ impl Editor {
 
     /// Mesajul de stare, cu mențiunea aplatizării dacă a avut loc.
     fn note(&mut self, msg: String, flat: bool) {
-        self.status = if flat {
-            format!("{msg} · formele au fost aplicate pe imagine")
-        } else {
-            msg
-        };
+        self.status = if flat { i18n::with_flattened(&msg) } else { msg };
     }
 
     fn img_new(&mut self, w: u32, h: u32, c: Color32) {
@@ -1079,7 +1421,7 @@ impl Editor {
         let flat = self.flatten();
         self.set_img(RgbaImage::from_pixel(w.max(1), h.max(1), rgba(c)));
         self.drop_shapes();
-        self.note(format!("imagine nouă {}x{}", w.max(1), h.max(1)), flat);
+        self.note(i18n::new_image(w.max(1), h.max(1)), flat);
     }
 
     fn img_open(&mut self) {
@@ -1087,7 +1429,7 @@ impl Editor {
         let img = match image::open(&p) {
             Ok(i) => i.to_rgba8(),
             Err(e) => {
-                self.status = format!("nu pot deschide {}: {e}", p.display());
+                self.status = i18n::cannot_open(&p.display().to_string(), &e.to_string());
                 return;
             }
         };
@@ -1097,7 +1439,7 @@ impl Editor {
         self.set_img(img);
         self.drop_shapes();
         self.last_save = None;
-        self.note(format!("deschis {} ({w}x{h})", p.display()), flat);
+        self.note(i18n::opened(&p.display().to_string(), w, h), flat);
     }
 
     /// Redimensionare: singura operație care NU aplatizează — formele se
@@ -1115,7 +1457,7 @@ impl Editor {
         for s in self.shapes.iter_mut() {
             s.scale(k);
         }
-        self.note(format!("redimensionat la {w}x{h}"), false);
+        self.note(i18n::resized_to(w, h), false);
     }
 
     fn img_canvas(&mut self, w: u32, h: u32, c: Color32) {
@@ -1124,7 +1466,7 @@ impl Editor {
         let out = canvas_img(&self.img, w, h, c);
         let (w, h) = out.dimensions();
         self.set_img(out);
-        self.note(format!("pânză {w}x{h}"), flat);
+        self.note(i18n::canvas_to(w, h), flat);
     }
 
     fn img_autocrop(&mut self) {
@@ -1137,7 +1479,7 @@ impl Editor {
                 .map(|(x, y, w, h)| image::imageops::crop_imm(base, x, y, w, h).to_image())
         };
         let Some(out) = out else {
-            self.status = "nu există margini uniforme de tăiat".into();
+            self.status = t(Msg::StNoUniformEdges).into();
             return;
         };
         self.push_undo(true);
@@ -1147,7 +1489,7 @@ impl Editor {
         }
         let (w, h) = out.dimensions();
         self.set_img(out);
-        self.note(format!("decupat automat la {w}x{h}"), flattened);
+        self.note(i18n::auto_cropped_to(w, h), flattened);
     }
 
     fn img_rotate(&mut self, right: bool) {
@@ -1160,10 +1502,7 @@ impl Editor {
         };
         let (w, h) = out.dimensions();
         self.set_img(out);
-        self.note(
-            format!("rotit 90° {} la {w}x{h}", if right { "dreapta" } else { "stânga" }),
-            flat,
-        );
+        self.note(i18n::rotated(right, w, h), flat);
     }
 
     // ------------------------------------------------------------- dialog
@@ -1180,9 +1519,9 @@ impl Editor {
         }
         let Some(d) = self.dialog.as_mut() else { return };
         let (title, ok_text) = match d.kind {
-            DlgKind::New => ("Imagine nouă", "Creează"),
-            DlgKind::Size => ("Dimensiune imagine", "OK"),
-            DlgKind::Canvas => ("Dimensiune pânză", "OK"),
+            DlgKind::New => (t(Msg::DlgNewTitle), t(Msg::BtnCreate)),
+            DlgKind::Size => (t(Msg::DlgSizeTitle), t(Msg::BtnOk)),
+            DlgKind::Canvas => (t(Msg::DlgCanvasTitle), t(Msg::BtnOk)),
             DlgKind::Text => return,
         };
         let (mut ok, mut cancel) = (false, false);
@@ -1193,23 +1532,23 @@ impl Editor {
             .show(ctx, |ui| {
                 ui.set_min_width(240.0);
                 egui::Grid::new("sxr-dlg").num_columns(2).show(ui, |ui| {
-                    ui.label("Lățime");
+                    ui.label(t(Msg::LblWidth));
                     ui.add(egui::DragValue::new(&mut d.w).range(1..=20000).suffix(" px"));
                     ui.end_row();
-                    ui.label("Înălțime");
+                    ui.label(t(Msg::LblHeight));
                     ui.add(egui::DragValue::new(&mut d.h).range(1..=20000).suffix(" px"));
                     ui.end_row();
                     match d.kind {
                         DlgKind::Size => {
-                            ui.label("Proporții");
-                            ui.checkbox(&mut d.keep, "Păstrează proporțiile");
+                            ui.label(t(Msg::LblAspect));
+                            ui.checkbox(&mut d.keep, t(Msg::ChkKeepAspect));
                         }
                         DlgKind::New => {
-                            ui.label("Fundal");
+                            ui.label(t(Msg::LblBackground));
                             ui.color_edit_button_srgba(&mut d.color);
                         }
                         DlgKind::Canvas => {
-                            ui.label("Umplere");
+                            ui.label(t(Msg::LblCanvasFill));
                             ui.color_edit_button_srgba(&mut d.color);
                         }
                         DlgKind::Text => {}
@@ -1229,7 +1568,7 @@ impl Editor {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ok = ui.button(ok_text).clicked();
-                    cancel = ui.button("Renunță").clicked();
+                    cancel = ui.button(t(Msg::BtnCancel)).clicked();
                 });
             });
         if ok {
@@ -1241,109 +1580,122 @@ impl Editor {
     }
 
 
-    /// Fereastra de introducere a textului, după `TextDrawingInputBox`:
-    /// bara de unelte sus, zona de scris la mijloc, sfatul și butoanele jos.
+    /// Fereastra de introducere a textului, după `TextDrawingInputBox`.
+    /// Așezarea vine din `TextDrawingInputBox.Designer.cs` și din `.resx`-ul lui:
+    /// `flpProperties` (bara de sus) 518x32 la 8,5, `txtInput` 518x281 la 8,40 cu
+    /// chenar simplu, iar jos `btnSwapEnterKey` 24x24 la 8,328, `lblTip` lângă el
+    /// și `btnOK` / `btnCancel` de 104x24 lipite în dreapta. Client: 534x361.
     fn text_dialog_ui(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         let Some(d) = self.dialog.as_mut() else { return };
-        let t = &mut d.text;
+        let td = &mut d.text;
         // familia aleasă se încarcă o dată și rămâne în egui pentru desen
-        font::register(ctx, &t.opts);
+        font::register(ctx, &td.opts);
         if let Some(n) = font::take_note() {
             self.status = n;
         }
         let (mut ok, mut cancel) = (false, false);
-        egui::Window::new("sxr — introducere text")
+        egui::Window::new(t(Msg::DlgTextTitle))
             .collapsible(false)
             .resizable(true)
-            .default_size([560.0, 320.0])
+            .default_size([TDLG_WIN_W, TDLG_WIN_H])
+            .min_size([TDLG_W, 200.0])
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                // ---- bara de unelte
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Font:");
+                // toate controalele barei au aceeași înălțime, ca în original
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+                ui.spacing_mut().interact_size = Vec2::splat(TDLG_BTN);
+                // ---- bara de unelte: un singur rând, ca `flpProperties`
+                ui.horizontal(|ui| {
+                    ui.label(t(Msg::LblFont));
                     egui::ComboBox::from_id_salt("sxr-font")
-                        .width(190.0)
+                        .width(TDLG_FONT_W)
                         .height(360.0)
-                        .selected_text(t.opts.family.clone())
+                        .selected_text(td.opts.family.clone())
                         .show_ui(ui, |ui| {
                             for f in font::families() {
-                                let on = t.opts.family == f;
+                                let on = td.opts.family == f;
                                 if ui.selectable_label(on, f).clicked() {
-                                    t.opts.family = f.to_owned();
+                                    td.opts.family = f.to_owned();
                                 }
                             }
                         });
-                    ui.label("Dimensiune:");
-                    ui.add(egui::DragValue::new(&mut t.opts.size).range(6.0..=200.0).speed(0.5));
-                    ui.color_edit_button_srgba(&mut t.opts.color)
-                        .on_hover_text("Culoarea textului");
-                    ui.color_edit_button_srgba(&mut t.color2).on_hover_text(if t.outline {
-                        "Culoarea conturului"
-                    } else {
-                        "Culoarea fundalului"
-                    });
-                    ui.separator();
-                    if ui.selectable_label(t.opts.bold, egui::RichText::new("B").strong()).clicked() {
-                        t.opts.bold = !t.opts.bold;
-                    }
-                    if ui.selectable_label(t.opts.italic, egui::RichText::new("I").italics()).clicked() {
-                        t.opts.italic = !t.opts.italic;
-                    }
-                    if ui.selectable_label(t.opts.underline, egui::RichText::new("U").underline()).clicked() {
-                        t.opts.underline = !t.opts.underline;
-                    }
-                    ui.separator();
-                    ui.menu_button(format!("⬌ {}", t.opts.halign.horiz_name()), |ui| {
+                    ui.label(t(Msg::LblTextSize));
+                    num_up_down(ui, &mut td.opts.size);
+                    ui.color_edit_button_srgba(&mut td.opts.color)
+                        .on_hover_text(t(Msg::TipTextColor));
+                    // `btnGradient` stă tot aici, dar `Visible` îl aprinde numai
+                    // pentru formele cu degrade, iar sxr nu desenează degrade:
+                    // rămâne un singur buton de culoare, ca în captura originalului.
+                    let rt = egui::RichText::new;
+                    style_toggle(ui, &mut td.opts.bold, rt("B").strong(), Msg::TipBold);
+                    style_toggle(ui, &mut td.opts.italic, rt("I").italics(), Msg::TipItalic);
+                    style_toggle(ui, &mut td.opts.underline, rt("U").underline(), Msg::TipUnderline);
+                    // alinierile: butoane pătrate cu pictogramă, cu meniu la clic,
+                    // exact ca `btnAlignmentHorizontal` / `btnAlignmentVertical`
+                    let (r, _) = MenuButton::from_button(square_button()).ui(ui, |ui| {
                         for a in shape::Align::ALL {
                             if ui.button(a.horiz_name()).clicked() {
-                                t.opts.halign = a;
+                                td.opts.halign = a;
                                 ui.close();
                             }
                         }
-                    })
-                    .response
-                    .on_hover_text("Aliniere pe orizontală");
-                    ui.menu_button(format!("⬍ {}", t.opts.valign.vert_name()), |ui| {
+                    });
+                    let c = ui.style().interact(&r).fg_stroke.color;
+                    paint_align_h(ui.painter(), r.rect, td.opts.halign, c);
+                    r.on_hover_text(t(Msg::TipAlignHoriz));
+                    let (r, _) = MenuButton::from_button(square_button()).ui(ui, |ui| {
                         for a in shape::Align::ALL {
                             if ui.button(a.vert_name()).clicked() {
-                                t.opts.valign = a;
+                                td.opts.valign = a;
                                 ui.close();
                             }
                         }
-                    })
-                    .response
-                    .on_hover_text("Aliniere pe verticală");
+                    });
+                    let c = ui.style().interact(&r).fg_stroke.color;
+                    paint_align_v(ui.painter(), r.rect, td.opts.valign, c);
+                    r.on_hover_text(t(Msg::TipAlignVert));
                 });
-                ui.separator();
-                // ---- zona de scris, cu fontul și culoarea alese
-                let tip_h = ui.text_style_height(&egui::TextStyle::Body) + 28.0;
-                let h = (ui.available_height() - tip_h).max(60.0);
-                let bg = visible_bg(t.opts.color);
+                // ---- zona de scris: tot restul ferestrei, cu chenar
+                let h = (ui.available_height() - TDLG_BTN - ui.spacing().item_spacing.y).max(60.0);
+                let bg = visible_bg(td.opts.color);
                 {
-                    let te = egui::TextEdit::multiline(&mut t.buf)
-                        .font(font::opts_font_id(&t.opts, t.opts.size))
-                        .text_color(t.opts.color)
-                        .horizontal_align(match t.opts.halign {
+                    let te = egui::TextEdit::multiline(&mut td.buf)
+                        .font(font::opts_font_id(&td.opts, td.opts.size))
+                        .text_color(td.opts.color)
+                        .horizontal_align(match td.opts.halign {
                             shape::Align::Near => egui::Align::LEFT,
                             shape::Align::Center => egui::Align::Center,
                             shape::Align::Far => egui::Align::RIGHT,
                         })
                         .background_color(bg)
-                        .frame(egui::Frame::NONE)
                         .desired_width(f32::INFINITY);
                     let r = ui.add_sized([ui.available_width(), h], te);
                     // prima deschidere: cursorul e direct în text
-                    if t.focus {
-                        t.focus = false;
+                    if td.focus {
+                        td.focus = false;
                         r.request_focus();
                     }
                 }
-                ui.separator();
+                // ---- rândul de jos
                 ui.horizontal(|ui| {
-                    ui.small("Rând nou: Ctrl + Enter, OK: Enter");
+                    let r = ui.add(square_button());
+                    let c = ui.style().interact(&r).fg_stroke.color;
+                    paint_enter_key(ui.painter(), r.rect, c);
+                    if r.clicked() {
+                        td.opts.enter_new_line = !td.opts.enter_new_line;
+                    }
+                    r.on_hover_text(t(Msg::TipSwapEnterKey));
+                    ui.label(t(if td.opts.enter_new_line {
+                        Msg::TextInputHintSwap
+                    } else {
+                        Msg::TextInputHint
+                    }));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        cancel = ui.button("Renunță").clicked();
-                        ok = ui.button("OK").clicked();
+                        let btn = |txt: &str| {
+                            egui::Button::new(txt).min_size(egui::vec2(TDLG_OK_W, TDLG_BTN))
+                        };
+                        cancel = ui.add(btn(t(Msg::BtnCancel))).clicked();
+                        ok = ui.add(btn(t(Msg::BtnOk))).clicked();
                     });
                 });
             });
@@ -1363,8 +1715,8 @@ impl Editor {
 
     fn copy(&mut self) {
         match self.png().and_then(clip::copy_png) {
-            Ok(()) => self.status = "✓ copiat în clipboard".into(),
-            Err(e) => self.status = format!("✗ copiere eșuată: {e}"),
+            Ok(()) => self.status = t(Msg::StCopied).into(),
+            Err(e) => self.status = i18n::copy_failed(&e.to_string()),
         }
     }
 
@@ -1384,10 +1736,10 @@ impl Editor {
             .and_then(|png| std::fs::write(&path, png).map_err(Into::into))
         {
             Ok(()) => {
-                self.status = format!("✓ salvat: {}", path.display());
+                self.status = i18n::saved_to(&path.display().to_string());
                 self.last_save = Some(path);
             }
-            Err(e) => self.status = format!("✗ salvare eșuată: {e}"),
+            Err(e) => self.status = i18n::save_failed(&e.to_string()),
         }
     }
 
@@ -1531,23 +1883,26 @@ impl Editor {
     }
 
     /// Tastatura ferestrei de text, exact ca în `TextDrawingInputBox`:
-    /// Enter = OK, Ctrl+Enter = rând nou, Esc = renunță. Rulează ÎNAINTEA
-    /// construirii interfeței, deci scoate evenimentele din coadă înainte
-    /// să ajungă la `TextEdit`.
+    /// implicit Enter = OK și Ctrl+Enter = rând nou, iar butonul din stânga-jos
+    /// (`btnSwapEnterKey`, adică `Options.EnterKeyNewLine`) le schimbă între ele.
+    /// Esc = renunță. Rulează ÎNAINTEA construirii interfeței, deci scoate
+    /// evenimentele din coadă înainte să ajungă la `TextEdit`.
     fn text_keys(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         use egui::{Event, Key as K};
+        // cu `EnterKeyNewLine` pornit, tasta de OK e Ctrl+Enter, nu Enter
+        let swap = self.dialog.as_ref().is_some_and(|d| d.text.opts.enter_new_line);
         let (mut ok, mut cancel) = (false, false);
         ctx.input_mut(|i| {
             i.events.retain_mut(|e| match e {
                 Event::Key { key: K::Enter, pressed: true, modifiers, .. } => {
-                    if modifiers.ctrl || modifiers.command {
-                        // Ctrl+Enter: îl trecem drept Enter simplu, ca TextEdit
-                        // să insereze rândul nou chiar la poziția cursorului
-                        *modifiers = egui::Modifiers::NONE;
-                        true
-                    } else {
+                    if (modifiers.ctrl || modifiers.command) == swap {
                         ok = true;
                         false
+                    } else {
+                        // rândul nou: îl trecem drept Enter simplu, ca TextEdit
+                        // să-l insereze chiar la poziția cursorului
+                        *modifiers = egui::Modifiers::NONE;
+                        true
                     }
                 }
                 Event::Key { key: K::Escape, pressed: true, .. } => {
@@ -1573,7 +1928,7 @@ impl Editor {
         }
         self.tool = t;
         if !t.ready() {
-            self.status = format!("unealta {} nu e implementată încă", t.tooltip());
+            self.status = i18n::tool_not_ready(t.tooltip());
         }
     }
 
@@ -1588,10 +1943,10 @@ impl Editor {
                 Act::Copy => self.copy(),
                 Act::Save => self.save(false),
                 Act::SaveAs => self.save(true),
-                Act::Upload => self.status = "încărcarea nu e implementată".into(),
+                Act::Upload => self.status = t(Msg::StUploadMissing).into(),
                 // Butonul rămâne pentru fidelitate față de bara din ShareX,
                 // dar tipărirea e în afara scopului lui sxr.
-                Act::Print => self.status = "tipărirea nu e inclusă în sxr".into(),
+                Act::Print => self.status = t(Msg::StPrintMissing).into(),
                 Act::Undo => self.do_undo(),
                 Act::Redo => self.do_redo(),
                 Act::Dup => self.duplicate(),
@@ -1600,7 +1955,7 @@ impl Editor {
                 Act::Front | Act::Forward | Act::Backward | Act::Back => self.reorder(*a),
                 Act::CropTool => {
                     self.pick(Tool::Crop);
-                    self.status = "trage un dreptunghi ca să decupezi".into();
+                    self.status = t(Msg::StDragToCrop).into();
                 }
                 Act::NewImg => self.open_dialog(DlgKind::New),
                 Act::OpenImg => self.img_open(),
@@ -1645,6 +2000,13 @@ impl Editor {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.spacing_mut().button_padding = Vec2::new(5.0, 4.0);
+                    // În ShareX iconițele stau direct pe bară, fără casetă în
+                    // jur: rama și fundalul apar doar la trecerea mausului sau
+                    // pe unealta aleasă. Deci golim doar starea „inactiv".
+                    let w = &mut ui.style_mut().visuals.widgets;
+                    w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                    w.inactive.bg_fill = Color32::TRANSPARENT;
+                    w.inactive.bg_stroke = egui::Stroke::NONE;
 
                     // Bara stă centrată pe lățimea ferestrei, ca în ShareX.
                     let pad = ((ui.available_width() - self.bar_w) * 0.5).max(0.0);
@@ -1654,16 +2016,16 @@ impl Editor {
                     let x0 = ui.cursor().min.x;
 
                     for (name, tip, act) in [
-                        ("tick", "Aplică și închide (Enter)", Act::Apply),
-                        ("disk-black", "Salvează (Ctrl+S)", Act::Save),
-                        ("disks-black", "Salvează ca... (Ctrl+Shift+S)", Act::SaveAs),
-                        ("clipboard", "Copiază în clipboard (Ctrl+C)", Act::Copy),
-                        ("drive-globe", "Încarcă (Ctrl+U)", Act::Upload),
-                        ("printer", "Tipărește (Ctrl+P)", Act::Print),
+                        ("tick", Msg::TipApply, Act::Apply),
+                        ("disk-black", Msg::TipSave, Act::Save),
+                        ("disks-black", Msg::TipSaveAs, Act::SaveAs),
+                        ("clipboard", Msg::TipCopy, Act::Copy),
+                        ("drive-globe", Msg::TipUpload, Act::Upload),
+                        ("printer", Msg::TipPrint, Act::Print),
                     ] {
                         if ui
                             .add(egui::Button::image(icons.img(name)))
-                            .on_hover_text(tip)
+                            .on_hover_text(t(tip))
                             .clicked()
                         {
                             acts.push(act);
@@ -1690,14 +2052,14 @@ impl Editor {
 
                     // conturul are gaură în mijloc, umplerea și evidențierea nu —
                     // exact cele trei iconițe din ShareX
-                    color_button(ui, "contur", self.border_mut(), 8.0, "Culoare contur");
-                    color_button(ui, "umplere", self.fill_mut(), 0.0, "Culoare umplere");
+                    color_button(ui, "contur", self.border_mut(), 8.0, t(Msg::TipBorderColor));
+                    color_button(ui, "umplere", self.fill_mut(), 0.0, t(Msg::TipFillColor));
                     color_button(
                         ui,
                         "evidentiere",
                         &mut self.opt.highlight,
                         0.0,
-                        "Culoare evidențiere",
+                        t(Msg::TipHighlightColor),
                     );
 
                     ui.add_space(4.0);
@@ -1721,81 +2083,99 @@ impl Editor {
     fn menu_opts(&mut self, ui: &mut egui::Ui, icons: &Icons) {
         let o = &mut self.opt;
         let mut start = o.step_start;
+        // limba aleasă din meniu, aplicată după închiderea împrumutului pe `self`
+        let mut pick_lang = None;
         ui.menu_image_button(icons.img("layer--pencil"), |ui| {
             ui.set_min_width(240.0);
-            ui.add(egui::Slider::new(&mut o.border_size, 1.0..=32.0).text("Grosime contur"));
-            ui.add(egui::Slider::new(&mut o.corner_radius, 0.0..=32.0).text("Rază colț"));
-            ui.add(egui::Slider::new(&mut o.line_mid, 0..=shape::MAX_MID).text("Puncte de curbură linie"));
-            ui.add(egui::Slider::new(&mut o.pixelate, 2.0..=64.0).text("Dimensiune pixelare"));
-            ui.add(egui::Slider::new(&mut o.blur, 1.0..=100.0).text("Rază blur"));
-            ui.add(egui::Slider::new(&mut o.magnify, 110.0..=800.0).text("Putere lupă"));
-            ui.add(egui::Slider::new(&mut o.text.size, 8.0..=72.0).text("Dimensiune font text"));
-            ui.add(egui::Slider::new(&mut o.step_font, 8.0..=72.0).text("Dimensiune font numărător"));
-            ui.add(egui::Slider::new(&mut start, 1..=100).text("Valoare de pornire numărător"));
-            ui.checkbox(&mut o.shadow, "Umbră");
+            ui.add(egui::Slider::new(&mut o.border_size, 1.0..=32.0).text(t(Msg::SldBorderSize)));
+            ui.add(egui::Slider::new(&mut o.corner_radius, 0.0..=32.0).text(t(Msg::SldCornerRadius)));
+            ui.add(egui::Slider::new(&mut o.line_mid, 0..=shape::MAX_MID).text(t(Msg::SldCenterPoints)));
+            ui.add(egui::Slider::new(&mut o.pixelate, 2.0..=64.0).text(t(Msg::SldPixelSize)));
+            ui.add(egui::Slider::new(&mut o.blur, 1.0..=100.0).text(t(Msg::SldBlurStrength)));
+            ui.add(egui::Slider::new(&mut o.magnify, 110.0..=800.0).text(t(Msg::SldMagnifyStrength)));
+            ui.add(egui::Slider::new(&mut o.text.size, 8.0..=72.0).text(t(Msg::SldFontSize)));
+            ui.add(egui::Slider::new(&mut o.step_font, 8.0..=72.0).text(t(Msg::SldStepFontSize)));
+            ui.add(egui::Slider::new(&mut start, 1..=100).text(t(Msg::SldStepStart)));
+            ui.checkbox(&mut o.shadow, t(Msg::ChkDropShadow));
+            // jos de tot, despărțit de restul: alegerea limbii se aplică pe loc
+            // și se scrie în fișierul de configurare
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(t(Msg::LangSelector));
+                let cur = i18n::lang();
+                for l in i18n::Lang::ALL {
+                    if ui.selectable_label(cur == l, t(l.label())).clicked() {
+                        pick_lang = Some(l);
+                        ui.close();
+                    }
+                }
+            });
         })
         .response
-        .on_hover_text("Opțiuni unealtă");
+        .on_hover_text(t(Msg::MenuToolOptions));
         if start != self.opt.step_start {
             self.opt.step_start = start;
             self.step_next = start;
+        }
+        if let Some(l) = pick_lang {
+            i18n::set_lang_saved(l);
         }
     }
 
     fn menu_edit(&mut self, ui: &mut egui::Ui, icons: &Icons, acts: &mut Vec<Act>) {
         ui.menu_image_button(icons.img("wrench-screwdriver"), |ui| {
-            let mut item = |ui: &mut egui::Ui, icon: &str, text: &str, a: Act| {
+            let mut item = |ui: &mut egui::Ui, icon: &str, m: Msg, a: Act| {
                 if ui
-                    .add(egui::Button::image_and_text(icons.img(icon), text))
+                    .add(egui::Button::image_and_text(icons.img(icon), t(m)))
                     .clicked()
                 {
                     acts.push(a);
                     ui.close();
                 }
             };
-            item(ui, "arrow-circle-225-left", "Anulează (Ctrl+Z)", Act::Undo);
-            item(ui, "arrow-circle-315", "Refă (Ctrl+Y)", Act::Redo);
-            item(ui, "document-copy", "Duplică (Ctrl+D)", Act::Dup);
+            item(ui, "arrow-circle-225-left", Msg::ItUndo, Act::Undo);
+            item(ui, "arrow-circle-315", Msg::ItRedo, Act::Redo);
+            item(ui, "document-copy", Msg::ItDuplicate, Act::Dup);
             ui.separator();
-            item(ui, "layer--minus", "Șterge (Delete)", Act::Del);
-            item(ui, "eraser", "Șterge tot (Shift+Delete)", Act::DelAll);
+            item(ui, "layer--minus", Msg::ItDelete, Act::Del);
+            item(ui, "eraser", Msg::ItDeleteAll, Act::DelAll);
             ui.separator();
-            item(ui, "layers-stack-arrange", "Adu în față (Home)", Act::Front);
-            item(ui, "layers-arrange", "Adu mai în față (PageUp)", Act::Forward);
-            item(ui, "layers-arrange-back", "Trimite mai în spate (PageDown)", Act::Backward);
-            item(ui, "layers-stack-arrange-back", "Trimite în spate (End)", Act::Back);
+            item(ui, "layers-stack-arrange", Msg::ItToFront, Act::Front);
+            item(ui, "layers-arrange", Msg::ItForward, Act::Forward);
+            item(ui, "layers-arrange-back", Msg::ItBackward, Act::Backward);
+            item(ui, "layers-stack-arrange-back", Msg::ItToBack, Act::Back);
         })
         .response
-        .on_hover_text("Editare");
+        .on_hover_text(t(Msg::MenuEdit));
     }
 
     fn menu_image(&mut self, ui: &mut egui::Ui, icons: &Icons, acts: &mut Vec<Act>) {
         ui.menu_image_button(icons.img("image--pencil"), |ui| {
             ui.set_min_width(230.0);
-            let mut item = |ui: &mut egui::Ui, icon: &str, text: &str, a: Act| {
+            let mut item = |ui: &mut egui::Ui, icon: &str, m: Msg, a: Act| {
                 if ui
-                    .add(egui::Button::image_and_text(icons.img(icon), text))
+                    .add(egui::Button::image_and_text(icons.img(icon), t(m)))
                     .clicked()
                 {
                     acts.push(a);
                     ui.close();
                 }
             };
-            item(ui, "image-empty", "Imagine nouă", Act::NewImg);
-            item(ui, "folder-open-image", "Deschide fișier imagine", Act::OpenImg);
-            item(ui, "image--plus", "Inserează fișier imagine", Act::InsertFile);
-            item(ui, "camera", "Inserează imagine din ecran", Act::InsertScreen);
+            item(ui, "image-empty", Msg::ItNewImage, Act::NewImg);
+            item(ui, "folder-open-image", Msg::ItOpenImage, Act::OpenImg);
+            item(ui, "image--plus", Msg::ItInsertFile, Act::InsertFile);
+            item(ui, "camera", Msg::ItInsertScreen, Act::InsertScreen);
             ui.separator();
-            item(ui, "image-select", "Dimensiune imagine", Act::ImgSize);
-            item(ui, "image-resize", "Dimensiune pânză", Act::CanvasSize);
-            item(ui, "image-crop", "Decupează imaginea", Act::CropTool);
-            item(ui, "image-resize-actual", "Decupare automată", Act::AutoCrop);
+            item(ui, "image-select", Msg::ItImageSize, Act::ImgSize);
+            item(ui, "image-resize", Msg::ItCanvasSize, Act::CanvasSize);
+            item(ui, "image-crop", Msg::ItCropImage, Act::CropTool);
+            item(ui, "image-resize-actual", Msg::ItAutoCrop, Act::AutoCrop);
             ui.separator();
-            item(ui, "arrow-circle", "Rotește 90° dreapta", Act::RotRight);
-            item(ui, "arrow-circle-135-left", "Rotește 90° stânga", Act::RotLeft);
+            item(ui, "arrow-circle", Msg::ItRotateRight, Act::RotRight);
+            item(ui, "arrow-circle-135-left", Msg::ItRotateLeft, Act::RotLeft);
         })
         .response
-        .on_hover_text("Imagine");
+        .on_hover_text(t(Msg::MenuImage));
     }
 
     // ---------------------------------------------------------------- pânză
@@ -1818,15 +2198,7 @@ impl Editor {
         let htol = NODE_HIT / 2.0 / zoom;
 
         // Forma de sub cursor: ea primește chenarul animat, ca `CurrentHoverShape`.
-        let hover = resp.hover_pos().and_then(|sp| {
-            let p = to_img(sp);
-            self.shapes
-                .iter()
-                .enumerate()
-                .rev()
-                .find(|(_, s)| s.hit(p, tol))
-                .map(|(i, _)| i)
-        });
+        let hover = resp.hover_pos().and_then(|sp| self.shape_at(to_img(sp), tol));
         // Peste un nod, cursorul devine mânuță deschisă; cât tragi de el, închisă
         // (`SetHandCursor` din ShareX).
         let on_node = resp
@@ -1850,12 +2222,17 @@ impl Editor {
         } else if self.tool == Tool::Select {
             self.select_input(&resp, to_img, tol, htol);
         } else {
+            // Ordinea de la apăsare e cea din `StartRegionSelection`: întâi
+            // nodurile formei active, apoi forma de sub cursor — care se
+            // selectează și începe să se miște, oricare ar fi unealta — și
+            // abia dacă acolo nu e nimic, se începe o formă nouă.
             if resp.clicked() {
-                // contorul, casetele de text și imaginile inserate se plasează
-                // dintr-un simplu clic, nu prin tragere
                 if let Some(p) = resp.interact_pointer_pos() {
                     let at = to_img(p);
-                    if matches!(self.tool, Tool::Step) || self.tool.is_text() {
+                    if let Some(i) = self.shape_at(at, tol) {
+                        self.sel = Some(i);
+                    } else if matches!(self.tool, Tool::Step) || self.tool.is_text() {
+                        // contorul și casetele de text se plasează dintr-un clic
                         self.draft = self.new_draft(at);
                         self.commit_draft();
                     } else if matches!(
@@ -1868,14 +2245,15 @@ impl Editor {
                 }
             }
             if resp.drag_started() {
-                if let Some(p) = resp.interact_pointer_pos() {
+                if let Some(p) = Self::press_at(ui.ctx(), &resp) {
                     let at = to_img(p);
-                    // nodurile formei active se pot trage și fără a schimba
-                    // unealta, ca în ShareX; abia dacă nu e niciun nod sub
-                    // cursor începe o formă nouă
                     if let Some(idx) = self.handle_at(at, htol) {
                         self.push_undo(false);
                         self.drag = Some(Drag::Handle { idx });
+                    } else if let Some(i) = self.shape_at(at, tol) {
+                        self.sel = Some(i);
+                        self.push_undo(false);
+                        self.drag = Some(Drag::Move { last: at });
                     } else {
                         self.draft = self.new_draft(at);
                     }
@@ -1884,12 +2262,19 @@ impl Editor {
             if resp.dragged() {
                 if let Some(p) = resp.interact_pointer_pos() {
                     let at = to_img(p);
-                    if let Some(Drag::Handle { idx }) = self.drag {
-                        if let Some(s) = self.sel.and_then(|i| self.shapes.get_mut(i)) {
-                            s.move_handle(idx, at);
+                    match self.drag {
+                        Some(Drag::Handle { idx }) => {
+                            if let Some(s) = self.sel.and_then(|i| self.shapes.get_mut(i)) {
+                                s.move_handle(idx, at);
+                            }
                         }
-                    } else {
-                        self.update_draft(at);
+                        Some(Drag::Move { last }) => {
+                            if let Some(s) = self.sel.and_then(|i| self.shapes.get_mut(i)) {
+                                s.translate(at - last);
+                            }
+                            self.drag = Some(Drag::Move { last: at });
+                        }
+                        None => self.update_draft(at),
                     }
                 }
             }
@@ -1991,6 +2376,25 @@ impl Editor {
         }
     }
 
+    /// Forma cea mai de sus aflată sub punctul dat, ca `GetIntersectShape`.
+    fn shape_at(&self, p: Pos2, tol: f32) -> Option<usize> {
+        self.shapes
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, s)| s.hit(p, tol))
+            .map(|(i, _)| i)
+    }
+
+    /// Locul în care s-a apăsat butonul, nu locul în care a ajuns cursorul:
+    /// `drag_started` se aprinde abia după ce mausul s-a depărtat cu peste 6px
+    /// de apăsare, iar `interact_pointer_pos` dă poziția curentă. Fără asta,
+    /// nodurile scapă printre degete și orice formă pornește cu 6px mai încolo.
+    fn press_at(ctx: &egui::Context, resp: &egui::Response) -> Option<Pos2> {
+        ctx.input(|i| i.pointer.press_origin())
+            .or_else(|| resp.interact_pointer_pos())
+    }
+
     /// Indicele nodului formei selectate aflat sub punctul dat, dacă există.
     fn handle_at(&self, p: Pos2, tol: f32) -> Option<usize> {
         let s = self.shapes.get(self.sel?)?;
@@ -2026,7 +2430,7 @@ impl Editor {
             }
         }
         if resp.drag_started() {
-            if let Some(sp) = resp.interact_pointer_pos() {
+            if let Some(sp) = Self::press_at(&resp.ctx, resp) {
                 let p = to_img(sp);
                 let mut started = None;
                 // întâi handle-urile formei deja selectate, ca redimensionarea

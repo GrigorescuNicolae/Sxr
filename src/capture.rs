@@ -12,16 +12,16 @@ pub fn select_region() -> Result<RgbaImage> {
         .args(["-r", "-b", "-n", "-o"])
         .arg(&tmp)
         .status()
-        .context("nu am putut porni spectacle")?;
+        .context("could not start spectacle")?;
 
     if !status.success() {
-        bail!("spectacle a returnat cod {:?}", status.code());
+        bail!("spectacle exited with code {:?}", status.code());
     }
     if !tmp.exists() {
-        bail!("selectie anulata");
+        bail!("selection cancelled");
     }
 
-    let img = image::open(&tmp).context("nu am putut decoda PNG-ul")?.to_rgba8();
+    let img = image::open(&tmp).context("could not decode the PNG")?.to_rgba8();
     let _ = std::fs::remove_file(&tmp);
     Ok(img)
 }

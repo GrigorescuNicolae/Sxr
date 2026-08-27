@@ -194,7 +194,7 @@ pub fn compose(src: &RgbaImage, shapes: &[Shape]) -> Result<Vec<u8>> {
 /// Varianta cu opțiuni: `shadow` respectă bifa „Umbră" din bara de unelte.
 pub fn compose_opts(src: &RgbaImage, shapes: &[Shape], shadow: bool) -> Result<Vec<u8>> {
     let (w, h) = src.dimensions();
-    let mut pm = Pixmap::new(w, h).context("nu pot aloca pixmap")?;
+    let mut pm = Pixmap::new(w, h).context("could not allocate pixmap")?;
 
     for (dst, px) in pm.pixels_mut().iter_mut().zip(src.pixels()) {
         let [r, g, b, a] = px.0;

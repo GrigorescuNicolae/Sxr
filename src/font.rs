@@ -7,6 +7,8 @@ use std::sync::{Arc, OnceLock};
 use ab_glyph::{Font as _, FontRef, FontVec, GlyphId, PxScale, ScaleFont as _, point};
 use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Vec2};
 
+use crate::i18n::{self, Msg, t};
+
 /// Același fișier de font e folosit și de egui (preview) și de rasterizatorul
 /// nostru CPU (export), ca textul să iasă identic în ambele.
 pub const REGULAR: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
@@ -33,19 +35,19 @@ impl Align {
     pub const ALL: [Align; 3] = [Align::Near, Align::Center, Align::Far];
 
     pub fn horiz_name(self) -> &'static str {
-        match self {
-            Align::Near => "Stânga",
-            Align::Center => "Centru",
-            Align::Far => "Dreapta",
-        }
+        t(match self {
+            Align::Near => Msg::AlignLeft,
+            Align::Center => Msg::AlignCenter,
+            Align::Far => Msg::AlignRight,
+        })
     }
 
     pub fn vert_name(self) -> &'static str {
-        match self {
-            Align::Near => "Sus",
-            Align::Center => "Mijloc",
-            Align::Far => "Jos",
-        }
+        t(match self {
+            Align::Near => Msg::AlignTop,
+            Align::Center => Msg::AlignMiddle,
+            Align::Far => Msg::AlignBottom,
+        })
     }
 }
 
@@ -61,6 +63,10 @@ pub struct TextOpts {
     pub underline: bool,
     pub halign: Align,
     pub valign: Align,
+    /// `TextDrawingOptions.EnterKeyNewLine`: cu ea pornită, în fereastra de
+    /// text Enter face rând nou și Ctrl+Enter dă OK; oprită, e invers.
+    /// Butonul din stânga-jos al ferestrei o comută.
+    pub enter_new_line: bool,
 }
 
 impl Default for TextOpts {
@@ -74,6 +80,7 @@ impl Default for TextOpts {
             underline: false,
             halign: Align::Center,
             valign: Align::Center,
+            enter_new_line: false,
         }
     }
 }
@@ -115,11 +122,11 @@ fn scan() -> Db {
     {
         Ok(o) if o.status.success() => o.stdout,
         Ok(o) => {
-            db.note = Some(format!("fc-list a eșuat (cod {})", o.status));
+            db.note = Some(i18n::fc_list_failed(&o.status.to_string()));
             return db;
         }
         Err(e) => {
-            db.note = Some(format!("fc-list lipsește: {e}"));
+            db.note = Some(i18n::fc_list_missing(&e.to_string()));
             return db;
         }
     };
@@ -280,7 +287,7 @@ fn build(family: &str, bold: bool, italic: bool) -> Face {
     }
     let Some((file, exact)) = pick_file(family, bold, italic) else {
         if family != DEFAULT_FAMILY {
-            note(format!("familia „{family}” nu există; folosesc {DEFAULT_FAMILY}"));
+            note(i18n::family_missing(family, DEFAULT_FAMILY));
         }
         return fallback(bold);
     };
@@ -288,7 +295,7 @@ fn build(family: &str, bold: bool, italic: bool) -> Face {
         Ok(d) => d,
         Err(e) => {
             BAD.with_borrow_mut(|b| b.insert(family.to_owned()));
-            note(format!("nu pot citi {}: {e}", file.display()));
+            note(i18n::cannot_read(&file.display().to_string(), &e.to_string()));
             return fallback(bold);
         }
     };
@@ -301,15 +308,13 @@ fn build(family: &str, bold: bool, italic: bool) -> Face {
                     .or_insert_with(|| Arc::new(egui::FontData::from_owned(data)));
             });
             if !exact {
-                note(format!(
-                    "„{family}” nu are varianta cerută; folosesc stilul disponibil"
-                ));
+                note(i18n::family_no_variant(family));
             }
             Face { font: Rc::new(font), egui: name }
         }
         Err(e) => {
             BAD.with_borrow_mut(|b| b.insert(family.to_owned()));
-            note(format!("„{family}” nu poate fi încărcat ({e}); folosesc {DEFAULT_FAMILY}"));
+            note(i18n::family_load_failed(family, &e.to_string(), DEFAULT_FAMILY));
             fallback(bold)
         }
     }

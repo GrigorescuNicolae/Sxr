@@ -1,7 +1,9 @@
 mod app;
 mod capture;
 mod clip;
+mod config;
 mod font;
+mod i18n;
 mod icons;
 mod render;
 mod shape;
@@ -16,6 +18,8 @@ fn main() {
 use anyhow::Context as _;
 
 fn real_main() -> anyhow::Result<()> {
+    // limba salvata, inainte de orice text vazut de om
+    i18n::init();
     let arg = std::env::args().nth(1);
 
     // moduri interne, nu apar in --help
@@ -68,6 +72,28 @@ fn real_main() -> anyhow::Result<()> {
         let dir = std::env::args().nth(3).context("lipseste directorul de iesire")?;
         return img_test(&src, &dir);
     }
+    if arg.as_deref() == Some("--dlg-test") {
+        let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/dlg.png".into());
+        return app::text_dialog_shot(&out);
+    }
+    if arg.as_deref() == Some("--bar-test") {
+        let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/bar.png".into());
+        return app::toolbar_shot(&out);
+    }
+    if arg.as_deref() == Some("--i18n-check") {
+        // cu un cod de limba in plus, modul si scrie alegerea in fisierul de
+        // configurare: asa se poate verifica persistenta fara interfata
+        if let Some(code) = std::env::args().nth(2) {
+            let l = i18n::Lang::from_code(&code)
+                .with_context(|| format!("limba necunoscuta: {code}"))?;
+            i18n::set_lang_saved(l);
+        }
+        i18n::check();
+        for l in i18n::Lang::ALL {
+            println!("latimea barei in {}: {:.1} (BAR_W={:.1})", l.code(), app::bar_width(l), app::BAR_W);
+        }
+        return Ok(());
+    }
     if arg.as_deref() == Some("--copy-test") {
         let path = std::env::args().nth(2).context("lipseste calea")?;
         let img = image::open(&path)?.to_rgba8();
@@ -76,20 +102,20 @@ fn real_main() -> anyhow::Result<()> {
 
     let img = match arg.as_deref() {
         Some("-h") | Some("--help") => {
-            println!("sxr — captura si adnotare\n");
-            println!("  sxr              selecteaza o regiune de pe ecran, apoi deschide editorul");
-            println!("  sxr <fisier>     deschide direct o imagine existenta");
+            println!("{}\n", i18n::t(i18n::Msg::HelpTitle));
+            println!("{}", i18n::t(i18n::Msg::HelpRegion));
+            println!("{}", i18n::t(i18n::Msg::HelpFile));
             return Ok(());
         }
         Some(path) => image::open(path)
-            .map_err(|e| anyhow::anyhow!("nu pot deschide {path}: {e}"))?
+            .map_err(|e| anyhow::anyhow!("{}", i18n::cannot_open(path, &e.to_string())))?
             .to_rgba8(),
         None => {
             let img = capture::select_region()?;
             // auto-copy imediat: daca inchizi fara sa editezi, captura e deja in clipboard
             match render::compose(&img, &[]).and_then(clip::copy_png) {
                 Ok(()) => {}
-                Err(e) => eprintln!("sxr: auto-copy esuat: {e:#}"),
+                Err(e) => eprintln!("sxr: {}", i18n::auto_copy_failed(&format!("{e:#}"))),
             }
             img
         }
