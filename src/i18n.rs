@@ -1,20 +1,21 @@
-//! Limba interfeței. Engleza e implicita — textele engleze sunt cele din
-//! ShareX oriunde ShareX are un echivalent, fiindcă sxr e o clonă a editorului
-//! lui clasic; unde nu are (mesajele noastre de stare), e engleză simplă.
+//! The interface language. English is the default — the English texts are the
+//! ShareX ones wherever ShareX has an equivalent, since sxr is a clone of its
+//! classic editor; where it has none (our own status messages), it is plain
+//! English.
 //!
-//! Cheile sunt tipizate, nu șiruri: nu există căutare la rulare și nici cheie
-//! greșit scrisă care să treacă de compilator. Tabelul de mai jos generează
-//! deopotrivă `enum Msg`, lista `Msg::ALL` și cele două `match`-uri exhaustive
-//! pe limbă, deci o cheie fără traducere pur și simplu nu se poate scrie.
+//! The keys are typed, not strings: there is no lookup at runtime and no
+//! misspelled key that gets past the compiler. The table below generates the
+//! `enum Msg`, the `Msg::ALL` list and both exhaustive `match`es on the language
+//! alike, so a key without a translation simply cannot be written.
 //!
-//! Textele cu valori inserate (căi, dimensiuni, erori) nu sunt chei, ci funcții
-//! care întorc `String` — vezi partea de jos a fișierului.
+//! Texts with values inserted into them (paths, sizes, errors) are not keys but
+//! functions returning `String` — see the bottom of the file.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::config;
 
-// ------------------------------------------------------------------- limba
+// ---------------------------------------------------------------- language
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Lang {
@@ -23,10 +24,10 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// Limbile oferite, în ordinea din selectorul de limbă.
+    /// The languages we offer, in the order the language selector shows them.
     pub const ALL: [Lang; 2] = [Lang::En, Lang::Ro];
 
-    /// Codul scris în fișierul de configurare.
+    /// The code written in the config file.
     pub fn code(self) -> &'static str {
         match self {
             Lang::En => "en",
@@ -42,8 +43,8 @@ impl Lang {
         }
     }
 
-    /// Numele limbii în ea însăși, ca în orice selector de limbă: nu se
-    /// traduce, deci arată la fel indiferent de limba curentă.
+    /// The language's name in itself, as in any language selector: it is not
+    /// translated, so it looks the same whatever the current language is.
     pub fn label(self) -> Msg {
         match self {
             Lang::En => Msg::LangEnglish,
@@ -52,24 +53,25 @@ impl Lang {
     }
 }
 
-/// Limba curentă, ținută global ca să nu treacă prin toate semnăturile.
-/// Citirea e un singur `load` relaxat: se cheamă de zeci de ori pe cadru.
+/// The current language, kept global so it need not thread through every
+/// signature. Reading it is a single relaxed `load`: it is called dozens of
+/// times per frame.
 static CURRENT: AtomicU8 = AtomicU8::new(0);
 
-/// Cheia din fișierul de configurare.
+/// The key in the config file.
 pub const LANG_KEY: &str = "lang";
 
 pub fn lang() -> Lang {
     if CURRENT.load(Ordering::Relaxed) == 1 { Lang::Ro } else { Lang::En }
 }
 
-/// Schimbă limba doar în memorie. Se aplică de la următorul cadru.
+/// Changes the language in memory only. It takes effect from the next frame.
 pub fn set_lang(l: Lang) {
     CURRENT.store(if l == Lang::Ro { 1 } else { 0 }, Ordering::Relaxed);
 }
 
-/// Citește limba din fișierul de configurare. Fără fișier, cu fișier stricat
-/// sau cu un cod necunoscut rămâne engleza — `LANG`-ul sistemului nu contează.
+/// Reads the language from the config file. With no file, a broken file or an
+/// unknown code it stays English — the system's `LANG` does not count.
 pub fn init() {
     let l = config::get(LANG_KEY)
         .and_then(|v| Lang::from_code(&v))
@@ -77,19 +79,20 @@ pub fn init() {
     set_lang(l);
 }
 
-/// Schimbă limba și o ține minte. Eșecul scrierii nu oprește schimbarea:
-/// interfața se traduce oricum, doar că la repornire revine la cea salvată.
+/// Changes the language and remembers it. A failed write does not stop the
+/// change: the interface is translated anyway, only a restart brings back the
+/// saved one.
 pub fn set_lang_saved(l: Lang) {
     set_lang(l);
     config::set(LANG_KEY, l.code());
 }
 
-/// Textul cheii în limba curentă.
+/// The key's text in the current language.
 pub fn t(m: Msg) -> &'static str {
     m.text(lang())
 }
 
-// ------------------------------------------------------------------- chei
+// ------------------------------------------------------------------- keys
 
 macro_rules! messages {
     ($( $name:ident => ($en:expr, $ro:expr) ),* $(,)?) => {
@@ -97,15 +100,15 @@ macro_rules! messages {
         pub enum Msg { $($name),* }
 
         impl Msg {
-            /// Toate cheile, în ordinea din tabel. O parcurge `--i18n-check`.
+            /// All the keys, in table order. `--i18n-check` walks it.
             pub const ALL: &'static [Msg] = &[ $(Msg::$name),* ];
 
-            /// Numele cheii, pentru rapoartele de verificare.
+            /// The key's name, for the check reports.
             pub fn key(self) -> &'static str {
                 match self { $(Msg::$name => stringify!($name)),* }
             }
 
-            /// Textul într-o limbă anume, indiferent de cea curentă.
+            /// The text in a given language, whatever the current one is.
             pub fn text(self, l: Lang) -> &'static str {
                 match l {
                     Lang::En => match self { $(Msg::$name => $en),* },
@@ -117,10 +120,10 @@ macro_rules! messages {
 }
 
 messages! {
-    // ---- fereastra
+    // ---- the window
     WindowTitle => ("sxr — image editor", "sxr — editor"),
 
-    // ---- butoanele de acțiune din bară
+    // ---- the action buttons in the toolbar
     TipApply     => ("Apply changes & close (Enter)", "Aplică și închide (Enter)"),
     TipSave      => ("Save image (Ctrl + S)", "Salvează (Ctrl+S)"),
     TipSaveAs    => ("Save image as... (Ctrl + Shift + S)", "Salvează ca... (Ctrl+Shift+S)"),
@@ -128,12 +131,12 @@ messages! {
     TipUpload    => ("Upload image (Ctrl + U)", "Încarcă (Ctrl+U)"),
     TipPrint     => ("Print image... (Ctrl + P)", "Tipărește (Ctrl+P)"),
 
-    // ---- butoanele de culoare din bară
+    // ---- the color buttons in the toolbar
     TipBorderColor    => ("Border color", "Culoare contur"),
     TipFillColor      => ("Fill color", "Culoare umplere"),
     TipHighlightColor => ("Highlight color", "Culoare evidențiere"),
 
-    // ---- uneltele, în ordinea din bară (ShareX: `ShapeType`)
+    // ---- the tools, in toolbar order (ShareX: `ShapeType`)
     ToolSelect         => ("Select and move (M)", "Mutare și redimensionare (M)"),
     ToolRect           => ("Rectangle (R)", "Dreptunghi (R)"),
     ToolEllipse        => ("Ellipse (E)", "Elipsă (E)"),
@@ -158,7 +161,7 @@ messages! {
     ToolCrop           => ("Crop image (C)", "Decupare (C)"),
     ToolCutOut         => ("Cut out (X)", "Tăiere fâșie (X)"),
 
-    // ---- meniul „Opțiuni unealtă"
+    // ---- the "Tool options" menu
     MenuToolOptions   => ("Tool options", "Opțiuni unealtă"),
     SldBorderSize     => ("Border size", "Grosime contur"),
     SldCornerRadius   => ("Corner radius", "Rază colț"),
@@ -174,7 +177,7 @@ messages! {
     LangEnglish       => ("English", "English"),
     LangRomanian      => ("Română", "Română"),
 
-    // ---- meniul „Editare"
+    // ---- the "Edit" menu
     MenuEdit     => ("Edit", "Editare"),
     ItUndo       => ("Undo (Ctrl+Z)", "Anulează (Ctrl+Z)"),
     ItRedo       => ("Redo (Ctrl+Y)", "Refă (Ctrl+Y)"),
@@ -186,7 +189,7 @@ messages! {
     ItBackward   => ("Send backward (PageDown)", "Trimite mai în spate (PageDown)"),
     ItToBack     => ("Send to back (End)", "Trimite în spate (End)"),
 
-    // ---- meniul „Imagine"
+    // ---- the "Image" menu
     MenuImage        => ("Image", "Imagine"),
     ItNewImage       => ("New image...", "Imagine nouă"),
     ItOpenImage      => ("Open image file...", "Deschide fișier imagine"),
@@ -199,7 +202,7 @@ messages! {
     ItRotateRight    => ("Rotate 90° clockwise", "Rotește 90° dreapta"),
     ItRotateLeft     => ("Rotate 90° counter clockwise", "Rotește 90° stânga"),
 
-    // ---- dialogurile cu dimensiuni
+    // ---- the size dialogs
     DlgNewTitle    => ("New image", "Imagine nouă"),
     DlgSizeTitle   => ("Image size", "Dimensiune imagine"),
     DlgCanvasTitle => ("Canvas size", "Dimensiune pânză"),
@@ -213,8 +216,8 @@ messages! {
     LblBackground  => ("Background", "Fundal"),
     LblCanvasFill  => ("Canvas color", "Umplere"),
 
-    // ---- fereastra de introducere a textului
-    // titlul are forma din ShareX: „ShareX - Text input"
+    // ---- the text input dialog
+    // the title follows the ShareX form: "ShareX - Text input"
     DlgTextTitle       => ("sxr - Text input", "sxr - Introducere text"),
     LblFont            => ("Font:", "Font:"),
     LblTextSize        => ("Size:", "Dimensiune:"),
@@ -224,7 +227,7 @@ messages! {
     TipUnderline       => ("Underline", "Subliniat"),
     TipAlignHoriz      => ("Horizontal alignment", "Aliniere pe orizontală"),
     TipAlignVert       => ("Vertical alignment", "Aliniere pe verticală"),
-    // butonul din stânga-jos (`btnSwapEnterKey`) schimbă între cele două sfaturi
+    // the bottom-left button (`btnSwapEnterKey`) toggles between the two hints
     TextInputHint      => ("New line: Ctrl + Enter, OK: Enter", "Rând nou: Ctrl + Enter, OK: Enter"),
     TextInputHintSwap  => ("New line: Enter, OK: Ctrl + Enter", "Rând nou: Enter, OK: Ctrl + Enter"),
     TipSwapEnterKey    => ("Swap Enter key behavior", "Schimbă rolul tastei Enter"),
@@ -235,18 +238,18 @@ messages! {
     AlignMiddle        => ("Middle", "Mijloc"),
     AlignBottom        => ("Bottom", "Jos"),
 
-    // ---- fereastra de alegere a stickerelor (ShareX: StickerForm)
-    // titlul original e „ShareX - Sticker picker"; aplicația noastră are alt nume
+    // ---- the sticker picker dialog (ShareX: StickerForm)
+    // the original title is "ShareX - Sticker picker"; our app has another name
     DlgStickerTitle  => ("Sticker picker", "Alegere sticker"),
     LblSearch        => ("Search:", "Caută:"),
     LblStickerPack   => ("Stickers:", "Stickere:"),
     LblStickerSize   => ("Size:", "Dimensiune:"),
-    // rădăcina folderului de stickere, cea fără pachet în jur
+    // the root of the sticker folder, the one with no pack around it
     StickerAllPacks  => ("All stickers", "Toate stickerele"),
     TipStickerFolder => ("Open the sticker folder", "Deschide folderul cu stickere"),
     StNoStickerMatch => ("no sticker matches the search", "niciun sticker nu se potrivește"),
 
-    // ---- bara de stare, mesajele fără valori inserate
+    // ---- the status bar, the messages with no inserted values
     StNothingToUndo   => ("nothing to undo", "nimic de anulat"),
     StNothingToRedo   => ("nothing to redo", "nimic de refăcut"),
     StEmptyImage      => ("the image is empty", "imaginea e goală"),
@@ -259,7 +262,7 @@ messages! {
     StDragToCrop      => ("drag a rectangle to crop", "trage un dreptunghi ca să decupezi"),
     StFlattened       => ("the shapes were applied to the image", "formele au fost aplicate pe imagine"),
 
-    // ---- linia de comandă (`-h` / `--help`)
+    // ---- the command line (`-h` / `--help`)
     HelpTitle  => ("sxr — capture and annotate", "sxr — captură și adnotare"),
     HelpRegion => (
         "  sxr              select a region on the screen, then open the editor",
@@ -271,12 +274,12 @@ messages! {
     ),
 }
 
-// ------------------------------------------- texte cu valori inserate
+// ----------------------------------------- texts with inserted values
 
-// Nu avem motor de formatare: fiecare text cu găuri e o funcție care primește
-// exact ce trebuie pus în ele și întoarce `String`.
+// We have no formatting engine: every text with holes in it is a function that
+// takes exactly what goes into them and returns a `String`.
 
-/// Unealta aleasă e în bară, dar nu desenează nimic încă.
+/// The chosen tool is in the toolbar, but it does not draw anything yet.
 pub fn tool_not_ready(tool: &str) -> String {
     match lang() {
         Lang::En => format!("the {tool} tool is not implemented yet"),
@@ -398,7 +401,7 @@ pub fn rotated(right: bool, w: u32, h: u32) -> String {
     }
 }
 
-/// Mesajul de stare, cu mențiunea aplatizării adăugată după el.
+/// The status message, with the note about flattening appended after it.
 pub fn with_flattened(msg: &str) -> String {
     format!("{msg} · {}", t(Msg::StFlattened))
 }
@@ -431,7 +434,7 @@ pub fn auto_copy_failed(err: &str) -> String {
     }
 }
 
-// ---- mesajele venite din citirea fonturilor (ajung tot în bara de stare)
+// ---- the messages coming out of font reading (they land in the status bar too)
 
 pub fn fc_list_failed(status: &str) -> String {
     match lang() {
@@ -475,12 +478,12 @@ pub fn family_load_failed(family: &str, err: &str, fallback: &str) -> String {
     }
 }
 
-// ------------------------------------------------------------- verificare
+// --------------------------------------------------------------- checking
 
-/// Mod ascuns `--i18n-check`: parcurge toate cheile, în ambele limbi, și
-/// semnalează ce merită privit cu ochiul — text gol, engleză identică cu româna
-/// (uneori legitim: „OK") și diacritice românești rămase în varianta engleză.
-/// Neinteractiv, fără fereastră.
+/// Hidden `--i18n-check` mode: walks every key, in both languages, and flags
+/// what is worth a look by eye — empty text, English identical to Romanian
+/// (sometimes legitimate: "OK") and Romanian diacritics left in the English
+/// variant. Non-interactive, no window.
 pub fn check() {
     const DIACRITICE: [char; 10] = ['ă', 'â', 'î', 'ș', 'ț', 'Ă', 'Â', 'Î', 'Ș', 'Ț'];
 

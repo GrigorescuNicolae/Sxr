@@ -38,8 +38,8 @@ fn line_path(a: Pos2, b: Pos2) -> Option<tiny_skia::Path> {
     poly_path(&[a, b])
 }
 
-/// Linia frântă a unei forme (linie dreaptă, spline discretizat sau coada
-/// săgeții). Cu două puncte iese exact calea de dinainte.
+/// A shape's polyline (straight line, discretized spline, or arrow tail).
+/// With two points it comes out as exactly the old path.
 fn poly_path(poly: &[Pos2]) -> Option<tiny_skia::Path> {
     let (first, rest) = poly.split_first()?;
     let mut pb = PathBuilder::new();
@@ -50,7 +50,7 @@ fn poly_path(poly: &[Pos2]) -> Option<tiny_skia::Path> {
     pb.finish()
 }
 
-/// Dreptunghi cu colțuri rotunjite (ShareX desenează formele cu rază 3).
+/// Rectangle with rounded corners (ShareX draws shapes with radius 3).
 fn round_rect_path(r: Rect, radius: f32) -> Option<tiny_skia::Path> {
     let r = Rect::from_two_pos(r.min, r.max);
     if r.width() <= 0.0 || r.height() <= 0.0 {
@@ -60,7 +60,7 @@ fn round_rect_path(r: Rect, radius: f32) -> Option<tiny_skia::Path> {
     if rad <= 0.5 {
         return ts_rect(r).map(PathBuilder::from_rect);
     }
-    // 0.5523 = aproximarea Bézier a sfertului de cerc
+    // 0.5523 = the Bézier approximation of a quarter circle
     let k = rad * 0.5523;
     let (l, t, rr, b) = (r.min.x, r.min.y, r.max.x, r.max.y);
     let mut pb = PathBuilder::new();
@@ -77,7 +77,7 @@ fn round_rect_path(r: Rect, radius: f32) -> Option<tiny_skia::Path> {
     pb.finish()
 }
 
-/// Amestecă un pixel peste pixmap-ul premultiplicat (folosit de rasterizarea textului).
+/// Blends one pixel over the premultiplied pixmap (used by text rasterization).
 fn blend(pm: &mut Pixmap, w: u32, h: u32, x: i32, y: i32, c: Color32, cov: f32) {
     if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
         return;
@@ -107,8 +107,9 @@ fn draw_text(pm: &mut Pixmap, w: u32, h: u32, text: &str, size: f32, bold: bool,
     });
 }
 
-/// Un rând de text deja așezat, plus sublinierea, deplasate cu `off`.
-/// Aceleași poziții ca în preview, fiindcă vin din același `font::layout`.
+/// Already laid-out text rows, plus the underline, shifted by `off`.
+/// The same positions as in the preview, since they come from the same
+/// `font::layout`.
 fn draw_layout(
     pm: &mut Pixmap,
     w: u32,
@@ -132,10 +133,10 @@ fn draw_layout(
     }
 }
 
-/// Desenează o imagine inserată, reeșantionată biliniar la `rect`.
-/// Interpolăm în alfa premultiplicat: altfel culoarea pixelilor complet
-/// transparenți (de regulă negru) s-ar amesteca în marginile formei și ar
-/// apărea un halou. Abia rezultatul se amestecă peste fundal.
+/// Draws an inserted image, bilinearly resampled to `rect`.
+/// We interpolate in premultiplied alpha: otherwise the color of the fully
+/// transparent pixels (usually black) would bleed into the shape's edges and a
+/// halo would appear. Only the result is then blended over the background.
 fn draw_img(pm: &mut Pixmap, w: u32, h: u32, img: &RgbaImage, rect: Rect) {
     let r = Rect::from_two_pos(rect.min, rect.max);
     let (sw, sh) = (img.width() as i64, img.height() as i64);
@@ -146,7 +147,7 @@ fn draw_img(pm: &mut Pixmap, w: u32, h: u32, img: &RgbaImage, rect: Rect) {
     let y0 = r.min.y.floor().max(0.0) as i64;
     let x1 = (r.max.x.ceil() as i64).min(w as i64);
     let y1 = (r.max.y.ceil() as i64).min(h as i64);
-    // marginile se replică, ca eșantionarea să nu iasă din imagine
+    // the edges are replicated, so the sampling cannot run off the image
     let tap = |x: i64, y: i64| {
         let p = img
             .get_pixel(x.clamp(0, sw - 1) as u32, y.clamp(0, sh - 1) as u32)
@@ -155,7 +156,7 @@ fn draw_img(pm: &mut Pixmap, w: u32, h: u32, img: &RgbaImage, rect: Rect) {
         [p[0] as f32 * a, p[1] as f32 * a, p[2] as f32 * a, a]
     };
     for y in y0..y1 {
-        // centrul pixelului destinație, dus în coordonate sursă
+        // the center of the destination pixel, taken into source coordinates
         let v = (y as f32 + 0.5 - r.min.y) / r.height() * sh as f32 - 0.5;
         let (iv, fv) = (v.floor(), v - v.floor());
         for x in x0..x1 {
@@ -177,7 +178,7 @@ fn draw_img(pm: &mut Pixmap, w: u32, h: u32, img: &RgbaImage, rect: Rect) {
             if c[3] <= 0.002 {
                 continue;
             }
-            // `blend` cere culoare nepremultiplicată plus acoperire separată
+            // `blend` wants an unpremultiplied color plus separate coverage
             let d = |q: f32| (q / c[3]).round().clamp(0.0, 255.0) as u8;
             let col = Color32::from_rgb(d(c[0]), d(c[1]), d(c[2]));
             blend(pm, w, h, x as i32, y as i32, col, c[3]);
@@ -185,13 +186,13 @@ fn draw_img(pm: &mut Pixmap, w: u32, h: u32, img: &RgbaImage, rect: Rect) {
     }
 }
 
-/// Rasterizează imaginea finală pe CPU și o codează PNG.
-/// Independent de zoom-ul din preview — exportul e mereu la rezoluția sursei.
+/// Rasterizes the final image on the CPU and encodes it as PNG.
+/// Independent of the preview zoom — the export is always at source resolution.
 pub fn compose(src: &RgbaImage, shapes: &[Shape]) -> Result<Vec<u8>> {
     compose_opts(src, shapes, true)
 }
 
-/// Varianta cu opțiuni: `shadow` respectă bifa „Umbră" din bara de unelte.
+/// The variant with options: `shadow` honors the "Shadow" checkbox in the toolbar.
 pub fn compose_opts(src: &RgbaImage, shapes: &[Shape], shadow: bool) -> Result<Vec<u8>> {
     let (w, h) = src.dimensions();
     let mut pm = Pixmap::new(w, h).context("could not allocate pixmap")?;
@@ -203,8 +204,8 @@ pub fn compose_opts(src: &RgbaImage, shapes: &[Shape], shadow: bool) -> Result<V
             .unwrap_or(PremultipliedColorU8::TRANSPARENT);
     }
 
-    // reflectorul: un singur strat întunecat, cu găuri pentru toate
-    // dreptunghiurile, pus la poziția primului reflector din listă
+    // the spotlight: a single dark layer, with holes for all the
+    // rectangles, placed at the position of the first spotlight in the list
     let spot_at = spotlight_at(shapes);
     let spots = spotlight_rects(shapes);
 
@@ -237,7 +238,7 @@ pub fn compose_opts(src: &RgbaImage, shapes: &[Shape], shadow: bool) -> Result<V
     Ok(buf.into_inner())
 }
 
-/// Întunecă tot în afara reuniunii dreptunghiurilor de reflector.
+/// Darkens everything outside the union of the spotlight rectangles.
 fn draw_spotlight(pm: &mut Pixmap, spots: &[Rect], w: f32, h: f32) {
     let id = Transform::identity();
     let mut paint = paint_of(SPOTLIGHT_DIM);
@@ -249,8 +250,8 @@ fn draw_spotlight(pm: &mut Pixmap, spots: &[Rect], w: f32, h: f32) {
     }
 }
 
-/// Capul plin al săgeții: un singur contur închis, tiny-skia umple corect și
-/// forma concavă de la scobitură.
+/// The solid arrowhead: a single closed outline — tiny-skia fills the concave
+/// notch shape correctly too.
 fn fill_arrow_head(
     pm: &mut tiny_skia::Pixmap,
     [tip, c1, mid, c2]: [eframe::egui::Pos2; 4],
@@ -339,9 +340,9 @@ fn draw_one(pm: &mut Pixmap, w: u32, h: u32, src: &RgbaImage, s: &Shape) {
             draw_layout(pm, w, h, &lay, opts, &uls, Vec2::ZERO, opts.color);
         }
         Shape::Balloon { rect, tail, text, opts, fill, border, width, radius } => {
-            // schița nefinalizată poate avea `max < min` (tragere înapoi)
+            // an unfinished draft can have `max < min` (dragging backwards)
             let rect = &Rect::from_two_pos(rect.min, rect.max);
-            // caseta trece prin exact aceeași cale ca dreptunghiul rotunjit
+            // the box goes through exactly the same path as the rounded rect
             draw_one(pm, w, h, src, &box_shape(*rect, *fill, *border, *width, *radius));
             let t = balloon_tail(*rect, *tail);
             if fill.a() > 0 {
@@ -356,7 +357,7 @@ fn draw_one(pm: &mut Pixmap, w: u32, h: u32, src: &RgbaImage, s: &Shape) {
                 }
             }
             if *width > 0.0 && border.a() > 0 {
-                // doar laturile oblice: baza ar trage o linie prin balon
+                // only the slanted sides: the base would draw a line through the balloon
                 for b in t.base {
                     if let Some(path) = line_path(b, t.tip) {
                         pm.stroke_path(&path, &paint_of(*border), &stroke_of(*width), id, None);
@@ -408,8 +409,8 @@ fn draw_one(pm: &mut Pixmap, w: u32, h: u32, src: &RgbaImage, s: &Shape) {
                 let mut x = r.min.x;
                 while x < r.max.x {
                     let (x2, y2) = ((x + b).min(r.max.x), (y + b).min(r.max.y));
-                    // eșantionăm din sursa originală, nu din pixmap,
-                    // ca formele desenate dedesubt să nu fie mânjite în bloc
+                    // we sample from the original source, not from the pixmap,
+                    // so the shapes drawn underneath are not smeared into blocks
                     let c = block_avg(src, x as i64, y as i64, x2 as i64, y2 as i64);
                     if let Some(rr) = tiny_skia::Rect::from_ltrb(x, y, x2, y2) {
                         let mut p = paint_of(c);
@@ -432,7 +433,7 @@ fn draw_one(pm: &mut Pixmap, w: u32, h: u32, src: &RgbaImage, s: &Shape) {
                 }
             }
         }
-        // stratul întunecat se desenează o singură dată, în compose_opts
+        // the dark layer is drawn only once, in compose_opts
         Shape::Spotlight { .. } => {}
         Shape::Img { rect, img, .. } => draw_img(pm, w, h, img, Rect::from_two_pos(rect.min, rect.max)),
         Shape::Erase { rect, color } => {

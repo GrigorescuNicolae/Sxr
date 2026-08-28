@@ -5,9 +5,9 @@ use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
 pub const SERVE_FLAG: &str = "--clipboard-server";
 
-/// Pe Wayland conținutul din clipboard e servit live de procesul care l-a oferit.
-/// `wl-clipboard-rs` pornește doar un *thread*, care moare odată cu noi — de aceea
-/// delegăm unui subproces care rămâne în viață după ce editorul se închide.
+/// On Wayland the clipboard contents are served live by the process that offered
+/// them. `wl-clipboard-rs` only starts a *thread*, which dies along with us — that
+/// is why we delegate to a child process that outlives the editor.
 fn pid_file() -> std::path::PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(std::path::PathBuf::from)
@@ -15,11 +15,11 @@ fn pid_file() -> std::path::PathBuf {
         .join("sxr-clipboard.pid")
 }
 
-/// Serverul anterior nu se stinge de fiecare dată singur când altcineva preia
-/// clipboard-ul, așa că îl închidem noi ca să nu se adune procese.
+/// The previous server does not always shut itself down when someone else takes
+/// over the clipboard, so we close it ourselves to keep processes from piling up.
 fn kill_previous(pid: Option<i32>) {
     let Some(pid) = pid else { return };
-    // ne asigurăm că e chiar serverul nostru înainte să trimitem semnalul
+    // make sure it really is our server before we send the signal
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
     let cmdline = String::from_utf8_lossy(&cmdline);
     if cmdline.contains("sxr") && cmdline.contains(SERVE_FLAG) {
@@ -48,15 +48,15 @@ pub fn copy_png(png: Vec<u8>) -> Result<()> {
         .write_all(&png)
         .context("could not send the image to the clipboard server")?;
 
-    // abia după ce noul server a primit datele închidem vechiul,
-    // ca să nu rămână clipboard-ul gol între cele două
+    // only once the new server has the data do we close the old one,
+    // so the clipboard is never left empty between the two
     kill_previous(previous);
     let _ = std::fs::write(pid_file(), child.id().to_string());
     Ok(())
 }
 
-/// Rulează în subprocesul dedicat: preia PNG-ul de pe stdin și îl servește
-/// până când altcineva pune altceva în clipboard.
+/// Runs in the dedicated child process: takes the PNG from stdin and serves it
+/// until someone else puts something else in the clipboard.
 pub fn serve_from_stdin() -> Result<()> {
     let mut buf = Vec::new();
     std::io::stdin().read_to_end(&mut buf).context("reading stdin")?;
@@ -64,7 +64,7 @@ pub fn serve_from_stdin() -> Result<()> {
         bail!("nothing to serve");
     }
     let mut opts = Options::new();
-    // blocant intenționat: ăsta e singurul rost al procesului
+    // blocking on purpose: this is the process's only reason to exist
     opts.foreground(true);
     opts.copy(
         Source::Bytes(buf.into_boxed_slice()),
@@ -74,7 +74,7 @@ pub fn serve_from_stdin() -> Result<()> {
     Ok(())
 }
 
-/// Tipurile MIME oferite acum de clipboard — folosit pentru verificare automată.
+/// The MIME types the clipboard offers right now — used for automated checking.
 pub fn mime_types() -> Result<Vec<String>> {
     use wl_clipboard_rs::paste::{get_mime_types, ClipboardType, Seat};
     let set = get_mime_types(ClipboardType::Regular, Seat::Unspecified)
@@ -84,7 +84,7 @@ pub fn mime_types() -> Result<Vec<String>> {
     Ok(v)
 }
 
-/// Citește imaginea din clipboard într-un fișier — verificare automată a round-trip-ului.
+/// Reads the clipboard image into a file — an automated round-trip check.
 pub fn paste_to_file(path: &str) -> Result<usize> {
     use wl_clipboard_rs::paste::{get_contents, ClipboardType, Seat};
     let (mut pipe, _mime) = get_contents(

@@ -16,28 +16,29 @@ use crate::icons::Icons;
 use crate::render;
 use crate::shape::{self, Shape, Tool};
 
-/// Lățimea barei de unelte în puncte — fereastra nu coboară sub ea,
-/// altfel meniurile din dreapta ar ieși din cadru (Wayland ignoră
-/// redimensionarea cerută de aplicație după creare).
+/// Toolbar width in points — the window never goes below it, otherwise the
+/// menus on the right would fall outside the frame (Wayland ignores a resize
+/// requested by the application after creation).
 pub const BAR_W: f32 = 1112.0;
 
-/// Nodul de redimensionare, ca `Resources/CircleNode.png` din ShareX: un disc
-/// alb plin de 18px, într-o casetă de 24px. Varianta desenată cu contur din
-/// `ResizeNode.OnDraw` se folosește doar când `UseLightResizeNodes` e activat,
-/// iar opțiunea aceea e implicit oprită, deci nu se vede niciodată în mod normal.
+/// The resize node, like ShareX's `Resources/CircleNode.png`: a solid white
+/// disc of 18px, in a 24px box. The outlined variant drawn by
+/// `ResizeNode.OnDraw` is used only when `UseLightResizeNodes` is on, and that
+/// option is off by default, so it is never seen under normal use.
 const NODE: f32 = 18.0;
-/// Latura casetei nodului — și raza în care se prinde cu mausul.
+/// The side of the node box — and the radius within which the mouse grabs it.
 const NODE_HIT: f32 = 24.0;
 
-/// Unealta activă din bară, ca în ShareX: nu un bloc de culoare, ci un fundal
-/// discret plus un chenar de 1px. Bara editorului de regiune primește
-/// `ToolStripDarkRenderer` (`ShareXResources.ApplyTheme`), adică `DarkColorTable`
-/// peste `ShareXTheme.DarkTheme`; de acolo vin `ButtonCheckedGradient*` =
-/// `MenuCheckBackgroundColor` = #333333 și `ButtonSelectedBorder` =
-/// `MenuHighlightBorderColor` = #3F3F3F, iar survolarea = `MenuHighlightColor`
-/// = #2E2E2E. Le luăm ca atare, nu ca diferență față de fundal: panoul nostru
-/// e mai întunecat decât bara ShareX (#1B1B1B față de #272727), deci diferența
-/// transpusă ar da un fundal aproape invizibil.
+/// The active tool in the toolbar, as in ShareX: not a block of color, but a
+/// discreet background plus a 1px border. The region editor's toolbar gets
+/// `ToolStripDarkRenderer` (`ShareXResources.ApplyTheme`), that is
+/// `DarkColorTable` over `ShareXTheme.DarkTheme`; from there come
+/// `ButtonCheckedGradient*` = `MenuCheckBackgroundColor` = #333333 and
+/// `ButtonSelectedBorder` = `MenuHighlightBorderColor` = #3F3F3F, and hover =
+/// `MenuHighlightColor` = #2E2E2E. We take them as they are, not as a
+/// difference from the background: our panel is darker than the ShareX bar
+/// (#1B1B1B against #272727), so the transposed difference would give an
+/// almost invisible background.
 const SEL_BG: Color32 = Color32::from_rgb(0x33, 0x33, 0x33);
 const SEL_BORDER: Color32 = Color32::from_rgb(0x3F, 0x3F, 0x3F);
 const HOVER_BG: Color32 = Color32::from_rgb(0x2E, 0x2E, 0x2E);
@@ -62,16 +63,16 @@ pub fn run(img: RgbaImage) -> Result<()> {
     .map_err(|e| anyhow::anyhow!("eframe: {e}"))
 }
 
-/// Măsurătoare neinteractivă a lățimii barei, pentru `--i18n-check`: bara
-/// conține numai iconițe și meniuri cu iconiță, deci limba n-ar trebui s-o
-/// schimbe — dar `BAR_W` e lățimea minimă a ferestrei, deci merită verificat.
-/// egui așază totul pe CPU, așa că nu e nevoie de fereastră.
+/// Non-interactive measurement of the toolbar width, for `--i18n-check`: the
+/// bar holds only icons and icon menus, so the language should not change it —
+/// but `BAR_W` is the window's minimum width, so it is worth checking. egui
+/// lays everything out on the CPU, so no window is needed.
 pub fn bar_width(l: i18n::Lang) -> f32 {
     i18n::set_lang(l);
     let ctx = egui::Context::default();
     font::install(&ctx);
     let mut ed = Editor::new(&ctx, RgbaImage::new(16, 16));
-    // primul cadru încarcă fonturile și texturile; măsura bună vine după
+    // the first frame loads the fonts and textures; the good measure comes after
     for _ in 0..3 {
         let _ = ctx.run_ui(Default::default(), |ui| {
             let icons = ed.icons.clone();
@@ -82,10 +83,10 @@ pub fn bar_width(l: i18n::Lang) -> f32 {
     ed.bar_w
 }
 
-/// Randare neinteractivă a ferestrei de text, pentru `--dlg-test`: aceeași
-/// `text_dialog_ui`, într-un context egui care lucrează numai pe CPU — tehnica
-/// de la `bar_width`, plus un rasterizor propriu pentru triunghiurile scoase de
-/// egui. Fundalul rămâne magenta, ca marginile ferestrei să se poată măsura.
+/// Non-interactive render of the text window, for `--dlg-test`: the same
+/// `text_dialog_ui`, in an egui context that works only on the CPU — the
+/// technique from `bar_width`, plus our own rasterizer for the triangles egui
+/// emits. The background stays magenta, so the window edges can be measured.
 pub fn text_dialog_shot(path: &str) -> Result<()> {
     shot(path, 660, 540, |ctx, ed| {
         let mut acts = Vec::new();
@@ -93,13 +94,13 @@ pub fn text_dialog_shot(path: &str) -> Result<()> {
     })
 }
 
-/// Aceeași randare, dar pentru bara de unelte: `--bar-test`.
+/// The same render, but for the toolbar: `--bar-test`.
 pub fn toolbar_shot(path: &str) -> Result<()> {
     shot(path, 1160, 60, |ctx, ed| {
         let icons = ed.icons.clone();
         let mut acts = Vec::new();
-        // panourile cer un `Ui`, pe care aici nu-l avem, deci punem bara
-        // într-o zonă cu fundalul panoului, ca să se vadă ca în aplicație
+        // the panels need a `Ui`, which we do not have here, so we put the bar in
+        // an area with the panel background, so it looks like it does in the app
         egui::Area::new("bara".into())
             .fixed_pos(Pos2::ZERO)
             .show(ctx, |ui| {
@@ -112,19 +113,19 @@ pub fn toolbar_shot(path: &str) -> Result<()> {
     })
 }
 
-/// Randarea unui balon de dialog pe calea de PREVIEW (`Shape::draw`, adică
-/// `egui::Painter`), pentru `--balloon-test`. Regula proiectului e că
-/// preview-ul și exportul desenează la fel, deci modul scrie ambele imagini,
-/// din aceeași formă și peste același fundal, ca să poată fi comparate pixel
-/// cu pixel din afară.
+/// Rendering of a speech balloon on the PREVIEW path (`Shape::draw`, that is
+/// `egui::Painter`), for `--balloon-test`. The project's rule is that preview
+/// and export draw the same, so the mode writes both images, from the same
+/// shape and over the same background, so they can be compared pixel by pixel
+/// from outside.
 pub fn balloon_shot(dir: &str) -> Result<()> {
     let (w, h) = (300u32, 220u32);
     let bg = RgbaImage::from_pixel(w, h, image::Rgba([0, 0, 0, 255]));
     let s = demo_balloon();
 
     shot(&format!("{dir}/balon-preview.png"), w, h, |ctx, _| {
-        // fundal negru propriu: `shot` lasă altfel magenta, iar comparația cu
-        // exportul cere exact aceiași pixeli sub formă
+        // our own black background: `shot` would otherwise leave magenta, and the
+        // comparison with the export needs exactly the same pixels under the shape
         egui::Area::new("balon".into())
             .fixed_pos(Pos2::ZERO)
             .show(ctx, |ui| {
@@ -139,23 +140,23 @@ pub fn balloon_shot(dir: &str) -> Result<()> {
     })?;
 
     let path = format!("{dir}/balon-export.png");
-    // fără umbră: preview-ul din pânză o desenează separat, nu în `Shape::draw`
+    // no shadow: the canvas preview draws it separately, not in `Shape::draw`
     let png = render::compose_opts(&bg, std::slice::from_ref(&s), false)?;
     std::fs::write(&path, &png).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
     println!("scris {path}");
     Ok(())
 }
 
-/// Un PNG plin, scris pe loc pentru modurile de verificare: stickerele omului
-/// nu se ating niciodată, nici măcar la citire.
+/// A solid PNG, written on the spot for the check modes: the user's stickers
+/// are never touched, not even for reading.
 fn write_test_png(path: &Path, side: u32, rgb: [u8; 3]) -> Result<()> {
     let img = RgbaImage::from_pixel(side, side, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
     img.save(path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
     Ok(())
 }
 
-/// Arborele de probă al modurilor de verificare: rădăcina cu fișiere libere,
-/// plus două pachete. Se reface de la zero la fiecare rulare.
+/// The test tree of the check modes: the root with loose files, plus two
+/// packs. Rebuilt from scratch on every run.
 fn make_test_stickers(root: &Path, loose: &[&str]) -> Result<()> {
     let _ = std::fs::remove_dir_all(root);
     std::fs::create_dir_all(root)?;
@@ -177,15 +178,15 @@ fn make_test_stickers(root: &Path, loose: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Randare neinteractivă a ferestrei de stickere (`--sticker-shot`), pe un
-/// folder de probă din directorul temporar. Configurarea e și ea redirijată
-/// spre `/tmp`, ca imaginea să iasă la fel indiferent ce mărime a ales omul
-/// ultima dată — și ca fișierul lui să rămână neatins.
+/// Non-interactive render of the sticker window (`--sticker-shot`), on a test
+/// folder in the temporary directory. The configuration is redirected to
+/// `/tmp` as well, so the image comes out the same whatever size the user
+/// picked last time — and so their own file stays untouched.
 pub fn sticker_shot(path: &str) -> Result<()> {
     let tmp = std::env::temp_dir().join("sxr-sticker-shot");
     let cfg = tmp.join("config-home");
     std::fs::create_dir_all(&cfg)?;
-    // SIGURANTA: inca nu exista alte fire care sa citeasca mediul
+    // SAFETY: there are no other threads yet that could read the environment
     unsafe { std::env::set_var("XDG_CONFIG_HOME", &cfg) };
     let root = tmp.join("stickers");
     make_test_stickers(
@@ -214,29 +215,29 @@ pub fn sticker_shot(path: &str) -> Result<()> {
     })
 }
 
-/// Verificare neinteractivă a ferestrei de stickere (`--sticker-flow`): trece
-/// prin enumerarea pachetelor, filtrare, Enter, mărimea ținută minte și
-/// inserarea propriu-zisă, fără să deschidă nicio fereastră. Configurarea
-/// merge într-un director temporar, deci fișierul omului nu e atins.
+/// Non-interactive check of the sticker window (`--sticker-flow`): it goes
+/// through pack enumeration, filtering, Enter, the remembered size and the
+/// actual insertion, without opening any window. The configuration goes to a
+/// temporary directory, so the user's own file is not touched.
 pub fn sticker_flow_test() -> Result<()> {
     let tmp = std::env::temp_dir().join("sxr-sticker-flow");
     let cfg = tmp.join("config-home");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&cfg)?;
-    // SIGURANTA: inca nu exista alte fire care sa citeasca mediul
+    // SAFETY: there are no other threads yet that could read the environment
     unsafe { std::env::set_var("XDG_CONFIG_HOME", &cfg) };
     println!("configurare de proba: {}", config::path().display());
     let root = tmp.join("stickers");
     make_test_stickers(&root, &["arici.png", "balena.png", "Zebra.png"])?;
     let mut fail = 0usize;
 
-    // 1. pachetele: radacina prima, apoi subfolderele in ordine alfabetica
+    // 1. the packs: root first, then the subfolders in alphabetical order
     let packs = sticker_packs(&root);
     let names: Vec<&str> = packs.iter().map(|(n, _)| n.as_str()).collect();
     let ok = names == [t(Msg::StickerAllPacks), "animale", "simboluri"];
     ck(&mut fail, ok, format!("1 pachete: {names:?}"));
 
-    // 2. radacina fara fisiere libere nu mai e pachet
+    // 2. a root with no loose files is not a pack any more
     let gol = tmp.join("stickers-gol");
     std::fs::create_dir_all(gol.join("unu"))?;
     write_test_png(&gol.join("unu").join("x.png"), 32, [10, 20, 30])?;
@@ -245,13 +246,13 @@ pub fn sticker_flow_test() -> Result<()> {
     let ok = p2 == ["unu"];
     ck(&mut fail, ok, format!("2 radacina fara fisiere libere nu e pachet: {p2:?}"));
 
-    // 3. fisierele unui pachet, sortate
+    // 3. the files of one pack, sorted
     let files = sticker_files(&root);
     ck(&mut fail, files.len() == 3, format!("3 radacina are {} fisiere", files.len()));
     let sortate = files.windows(2).all(|w| w[0] <= w[1]);
     ck(&mut fail, sortate, format!("3 lista e sortata: {sortate}"));
 
-    // 4. filtrarea: pe calea intreaga, fara diferenta de majuscule
+    // 4. filtering: over the whole path, case-insensitive
     let animale = sticker_files(&root.join("animale"));
     let h = sticker_filter(&animale, "PIS");
     let ok = h.len() == 1 && animale[h[0]].ends_with("pisica.png");
@@ -263,7 +264,7 @@ pub fn sticker_flow_test() -> Result<()> {
     let h = sticker_filter(&animale, "   ");
     ck(&mut fail, h.len() == 2, format!("4 cautare goala arata tot: {}", h.len()));
 
-    // 5. dupa fiecare tasta, primul rezultat e preselectat, iar Enter il ia
+    // 5. after each key the first result is preselected, and Enter takes it
     let ctx = egui::Context::default();
     let mut ed = Editor::new(&ctx, RgbaImage::new(400, 300));
     ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
@@ -278,7 +279,7 @@ pub fn sticker_flow_test() -> Result<()> {
     let ok = first.as_deref().is_some_and(|p| p.ends_with("balena.png"));
     ck(&mut fail, ok, format!("5 Enter ia primul rezultat: {first:?}"));
 
-    // 6. marimea: se salveaza si se reciteste; ce iese din 16..=256 cade pe 64
+    // 6. the size: saved and read back; anything outside 16..=256 falls to 64
     let mut d = ed.dialog.take().expect("fereastra de stickere");
     d.sticker.size = 128.0;
     d.sticker.picked = first.clone();
@@ -292,7 +293,7 @@ pub fn sticker_flow_test() -> Result<()> {
     }
     ck(&mut fail, ed.shapes.is_empty(), format!("6 renuntarea nu insereaza: {} forme", ed.shapes.len()));
 
-    // 7. pachetul se tine minte dupa nume, nu dupa indice
+    // 7. the pack is remembered by name, not by index
     config::set(K_STICKER_PACK, "simboluri");
     ed.open_sticker(root.clone(), Pos2::ZERO, false);
     let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
@@ -302,7 +303,7 @@ pub fn sticker_flow_test() -> Result<()> {
     let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
     ck(&mut fail, i == 0, format!("7 pachetul disparut cade pe primul: {i}"));
 
-    // 8. alegerea insereaza un patrat de latura ceruta, in punctul de clic
+    // 8. picking inserts a square of the requested side, at the click point
     ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
     let mut d = ed.dialog.take().expect("fereastra de stickere");
     d.sticker.size = 48.0;
@@ -320,7 +321,7 @@ pub fn sticker_flow_test() -> Result<()> {
         _ => ck(&mut fail, false, "8 forma inserata nu e imagine".into()),
     }
 
-    // 9. cererea din meniu recentreaza forma pe imagine
+    // 9. the request from the menu recenters the shape on the image
     ed.delete_all();
     ed.open_sticker(root.clone(), Pos2::new(0.0, 0.0), true);
     let mut d = ed.dialog.take().expect("fereastra de stickere");
@@ -336,7 +337,7 @@ pub fn sticker_flow_test() -> Result<()> {
         _ => ck(&mut fail, false, "9 nicio forma dupa cererea din meniu".into()),
     }
 
-    // 10. renuntarea, cu un sticker deja sub cursor, nu insereaza nimic
+    // 10. cancelling, with a sticker already under the cursor, inserts nothing
     ed.delete_all();
     ed.open_sticker(root.clone(), Pos2::new(10.0, 10.0), false);
     let mut d = ed.dialog.take().expect("fereastra de stickere");
@@ -351,8 +352,8 @@ pub fn sticker_flow_test() -> Result<()> {
     Ok(())
 }
 
-/// Balonul folosit de `--balloon-test` și de `--balloon-flow`: culori pline și
-/// contur gros, ca măsurătorile de culoare din afară să nu cadă pe antialias.
+/// The balloon used by `--balloon-test` and `--balloon-flow`: solid colors and a
+/// thick outline, so color measurements from outside do not land on antialiasing.
 fn demo_balloon() -> Shape {
     Shape::Balloon {
         rect: Rect::from_min_max(Pos2::new(40.0, 30.0), Pos2::new(250.0, 130.0)),
@@ -366,7 +367,7 @@ fn demo_balloon() -> Shape {
     }
 }
 
-/// Rezultatul unei verificări din `--balloon-flow`, pe o singură linie.
+/// The result of one `--balloon-flow` check, on a single line.
 fn ck(fail: &mut usize, ok: bool, msg: String) {
     if !ok {
         *fail += 1;
@@ -374,16 +375,16 @@ fn ck(fail: &mut usize, ok: bool, msg: String) {
     println!("{} {msg}", if ok { "OK" } else { "ESUAT" });
 }
 
-/// Verificare neinteractivă a uneltei „balon de dialog" (`--balloon-flow`):
-/// reface pas cu pas ce fac mausul și fereastra de text pe pânză, chemând
-/// direct metodele editorului. Fără ea, drumul clic → schiță → fereastră de
-/// text nu se poate proba decât cu mâna, într-o sesiune grafică.
+/// Non-interactive check of the "speech balloon" tool (`--balloon-flow`): it
+/// replays step by step what the mouse and the text window do on the canvas,
+/// calling the editor's methods directly. Without it, the click → draft → text
+/// window path could only be tried by hand, in a graphical session.
 pub fn balloon_flow_test() -> Result<()> {
     let ctx = egui::Context::default();
     let mut ed = Editor::new(&ctx, RgbaImage::new(400, 300));
     let mut fail = 0usize;
 
-    // 1. tragerea obișnuită: apăsare, tragere, ridicare
+    // 1. the ordinary drag: press, drag, release
     ed.pick(Tool::SpeechBalloon);
     ed.draft = ed.new_draft(Pos2::new(40.0, 30.0));
     ed.update_draft(Pos2::new(250.0, 130.0));
@@ -395,7 +396,7 @@ pub fn balloon_flow_test() -> Result<()> {
     ck(&mut fail, dlg, format!("1 fereastra de text deschisa: {dlg}"));
     ck(&mut fail, ed.sel.is_none(), format!("1 sel cat e fereastra deschisa: {:?}", ed.sel));
 
-    // 2. închiderea cu text: forma rămâne, textul ajunge în ea, nodurile revin
+    // 2. closing with text: the shape stays, the text lands in it, nodes return
     let mut d = ed.dialog.take().expect("fereastra de text");
     d.text.buf = "Salut".into();
     ed.text_done(d.text, true);
@@ -404,7 +405,7 @@ pub fn balloon_flow_test() -> Result<()> {
     ck(&mut fail, ed.shapes.len() == 1, format!("2 forma a ramas: {} forme", ed.shapes.len()));
     ck(&mut fail, ed.sel == Some(0), format!("2 sel dupa OK: {:?}", ed.sel));
 
-    // 3. renunțarea pe o formă abia trasă: dispare ea, nimic altceva
+    // 3. cancelling on a freshly drawn shape: it goes, nothing else does
     ed.draft = ed.new_draft(Pos2::new(40.0, 160.0));
     ed.update_draft(Pos2::new(250.0, 260.0));
     ed.commit_draft();
@@ -415,8 +416,8 @@ pub fn balloon_flow_test() -> Result<()> {
     let keep = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Salut");
     ck(&mut fail, keep, format!("3 balonul dinainte e neatins: {keep}"));
 
-    // 4. clicul simplu, fără tragere: caseta degenerată primește dimensiunea
-    // implicită, exact ca la casetele de text
+    // 4. a plain click, without dragging: the degenerate box gets the
+    // default size, exactly as text boxes do
     let click = matches!(Tool::SpeechBalloon, Tool::Step) || Tool::SpeechBalloon.is_text();
     ck(&mut fail, click, format!("4 clicul simplu plaseaza balonul: {click}"));
     let at = Pos2::new(40.0, 160.0);
@@ -433,7 +434,7 @@ pub fn balloon_flow_test() -> Result<()> {
         ed.text_done(d.text, false);
     }
 
-    // 5. nodurile: 8 de dreptunghi plus vârful cozii
+    // 5. the nodes: 8 from the rectangle plus the tail tip
     let s = ed.shapes[0].clone();
     let n = s.handles().len();
     ck(&mut fail, n == 9, format!("5 noduri: {n}"));
@@ -449,8 +450,8 @@ pub fn balloon_flow_test() -> Result<()> {
     let only_box = r1 != r0 && t1 == t0;
     ck(&mut fail, only_box, format!("5 nodul 0 muta doar caseta: {r1:?} / {t1:?}"));
 
-    // 6. coada așezată la commit: sub colțul din stânga-jos, cu baza pe latura
-    // de jos a casetei și vârful chiar în punctul cozii
+    // 6. the tail placed at commit: below the bottom-left corner, with its base
+    // on the bottom edge of the box and the tip right at the tail point
     let sub = (t0.y - r0.bottom() - 30.0).abs() < 0.01 && (t0.x - r0.left()).abs() < 0.01;
     let lb = r0.left_bottom();
     ck(&mut fail, sub, format!("6 coada {t0:?} sub coltul stanga-jos {lb:?}"));
@@ -469,7 +470,7 @@ pub fn balloon_flow_test() -> Result<()> {
     Ok(())
 }
 
-/// Caseta și vârful cozii unui balon, pentru verificările de mai sus.
+/// The box and the tail tip of a balloon, for the checks above.
 fn balloon_parts(s: &Shape) -> (Rect, Pos2) {
     match s {
         Shape::Balloon { rect, tail, .. } => (*rect, *tail),
@@ -485,12 +486,12 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(sw as f32, sh as f32))),
         ..Default::default()
     };
-    // id-ul texturii -> (lățime, înălțime, pixeli premultiplicați)
+    // texture id -> (width, height, premultiplied pixels)
     let mut tex: std::collections::HashMap<egui::TextureId, (usize, usize, Vec<Color32>)> =
         std::collections::HashMap::new();
     let mut prims = Vec::new();
-    // primele cadre încarcă fonturile, așază fereastra și-i termină apariția
-    // treptată (`Area::fade_in`); desenul bun vine abia după ele
+    // the first frames load the fonts, place the window and finish its fade-in
+    // (`Area::fade_in`); the good drawing comes only after them
     for _ in 0..16 {
         font::sync();
         ctx.begin_pass(input.clone());
@@ -560,7 +561,7 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
                             + l1 * f(&v[1].color) as f32
                             + l2 * f(&v[2].color) as f32
                     };
-                    // ambele sunt premultiplicate, deci înmulțirea e pe canale
+                    // both are premultiplied, so the multiplication is per channel
                     let src = [
                         chan(|c| c.r()) * texel[0] / 255.0,
                         chan(|c| c.g()) * texel[1] / 255.0,
@@ -581,12 +582,12 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
     Ok(())
 }
 
-/// Aria cu semn a triunghiului `a b c`, dublă. Zero = punctele sunt coliniare.
+/// Twice the signed area of triangle `a b c`. Zero = the points are collinear.
 fn edge(a: Pos2, b: Pos2, c: Pos2) -> f32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
 
-/// Citire biliniară din atlasul de texturi, cu coordonate normalizate.
+/// Bilinear read from the texture atlas, with normalized coordinates.
 fn sample(px: &[Color32], w: usize, h: usize, u: f32, v: f32) -> [f32; 4] {
     if w == 0 || h == 0 {
         return [0.0; 4];
@@ -611,8 +612,8 @@ fn sample(px: &[Color32], w: usize, h: usize, u: f32, v: f32) -> [f32; 4] {
     out
 }
 
-/// Snapshot pentru undo. Imaginea e clonată doar la decupare,
-/// ca să nu copiem câțiva MB la fiecare linie desenată.
+/// Snapshot for undo. The image is cloned only on crop, so that we do not
+/// copy a few MB for every line drawn.
 struct Snap {
     shapes: Vec<Shape>,
     img: Option<RgbaImage>,
@@ -623,101 +624,101 @@ enum Drag {
     Handle { idx: usize },
 }
 
-/// Acțiune amânată cu un cadru: comanda de minimizare trebuie să ajungă întâi
-/// la compozitor, altfel fereastra noastră ar apărea în captură.
+/// Action deferred by one frame: the minimize command has to reach the
+/// compositor first, otherwise our window would show up in the capture.
 enum Pending {
-    /// Captură de regiune, de ștampilat la punctul dat. `center` = cererea vine
-    /// din meniu, deci forma se recentrează pe imagine după inserare.
+    /// Region capture, to be stamped at the given point. `center` = the request
+    /// comes from the menu, so the shape is recentered on the image after insertion.
     Screen { at: Pos2, center: bool },
 }
 
-/// Ce cere dialogul modal deschis peste pânză.
+/// What the modal dialog opened over the canvas is asking for.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlgKind {
     New,
     Size,
     Canvas,
-    /// Fereastra de introducere a textului (ShareX: TextDrawingInputBox).
+    /// The text input window (ShareX: TextDrawingInputBox).
     Text,
-    /// Fereastra de alegere a stickerelor (ShareX: StickerForm).
+    /// The sticker picker window (ShareX: StickerForm).
     Sticker,
 }
 
-/// Starea ferestrei de text. Câmpurile numerice de mai jos nu o privesc.
+/// The text window's state. The numeric fields below have nothing to do with it.
 #[derive(Default)]
 struct TextDlg {
-    /// Forma editată.
+    /// The shape being edited.
     idx: usize,
-    /// Forma tocmai a fost creată: dacă renunțăm, dispare cu totul.
+    /// The shape has just been created: if we cancel, it disappears entirely.
     fresh: bool,
-    /// E text cu contur (nu text cu fundal): decide unde se salvează implicitele.
+    /// Outlined text (not text with a background): decides where defaults are saved.
     outline: bool,
     buf: String,
     opts: shape::TextOpts,
-    /// Conturul, respectiv fundalul casetei — „culoarea secundară" din ShareX.
+    /// The outline, or the box background — ShareX's "secondary color".
     color2: Color32,
-    /// Primul cadru: mutăm focalizarea în zona de text.
+    /// First frame: we move the focus into the text area.
     focus: bool,
 }
 
-/// Starea ferestrei de alegere a stickerelor. Trăiește exact cât fereastra:
-/// lista de fișiere și miniaturile urcate în GPU pleacă odată cu ea.
+/// The sticker picker window's state. It lives exactly as long as the window:
+/// the file list and the thumbnails uploaded to the GPU go away with it.
 #[derive(Default)]
 struct StickerDlg {
-    /// Punctul de clic: acolo ajunge colțul din stânga-sus al stickerului.
+    /// The click point: that is where the sticker's top-left corner lands.
     at: Pos2,
-    /// Cererea vine din meniu, nu de la un clic pe pânză: forma se recentrează.
+    /// Request from the menu, not from a canvas click: the shape gets recentered.
     center: bool,
-    /// Rădăcina folosită — `stickers_dir()` în aplicație, alta la verificări.
+    /// The root in use — `stickers_dir()` in the app, another one in the checks.
     root: PathBuf,
-    /// Pachetele găsite: (nume afișat, folder), rădăcina prima.
+    /// The packs found: (display name, folder), root first.
     packs: Vec<(String, PathBuf)>,
-    /// Pachetul ales, indice în `packs`.
+    /// The chosen pack, an index into `packs`.
     pack: usize,
-    /// Fișierele pachetului ales. Se citesc o dată, la deschidere și la
-    /// schimbarea pachetului; filtrarea lucrează pe lista asta, nu pe disc.
+    /// The chosen pack's files. Read once, on opening and on switching packs;
+    /// filtering works on this list, not on disk.
     files: Vec<PathBuf>,
-    /// Indici în `files`, în ordinea afișării în grilă.
+    /// Indices into `files`, in the order they are shown in the grid.
     hits: Vec<usize>,
     query: String,
-    /// Selecția, ca indice în `hits`.
+    /// The selection, as an index into `hits`.
     sel: usize,
-    /// Latura miniaturii, care e și latura la care se inserează stickerul.
+    /// The thumbnail side, which is also the side the sticker is inserted at.
     size: f32,
-    /// Miniaturile deja urcate. `None` = fișier care nu se decodează.
+    /// The thumbnails already uploaded. `None` = a file that does not decode.
     thumbs: HashMap<PathBuf, Option<TextureHandle>>,
-    /// Primul cadru: focalizarea intră în câmpul de căutare.
+    /// First frame: the focus goes into the search field.
     focus: bool,
-    /// Stickerul ales; fără el, închiderea nu inserează nimic.
+    /// The chosen sticker; without it, closing inserts nothing.
     picked: Option<PathBuf>,
 }
 
 impl StickerDlg {
-    /// Citește pachetul ales și reface lista filtrată.
+    /// Reads the chosen pack and rebuilds the filtered list.
     fn reload(&mut self) {
         self.files = self
             .packs
             .get(self.pack)
             .map(|(_, p)| sticker_files(p))
             .unwrap_or_default();
-        // miniaturile vechi sunt ale altui pachet: nu mai au ce căuta în GPU
+        // the old thumbnails belong to another pack: no reason to keep them in the GPU
         self.thumbs.clear();
         self.refilter();
     }
 
-    /// Reface lista filtrată. Primul rezultat rămâne preselectat, ca în ShareX:
-    /// după fiecare tastă, Enter are deja pe ce cădea.
+    /// Rebuilds the filtered list. The first result stays preselected, as in
+    /// ShareX: after each key, Enter already has something to fall on.
     fn refilter(&mut self) {
         self.hits = sticker_filter(&self.files, &self.query);
         self.sel = 0;
     }
 
-    /// Primul rezultat al căutării — ce alege Enter.
+    /// The first search result — what Enter picks.
     fn first_hit(&self) -> Option<PathBuf> {
         self.files.get(*self.hits.first()?).cloned()
     }
 
-    /// Folderul pachetului ales, cel pe care îl deschide butonul cu roată.
+    /// The chosen pack's folder, the one the gear button opens.
     fn pack_dir(&self) -> PathBuf {
         self.packs
             .get(self.pack)
@@ -726,19 +727,19 @@ impl StickerDlg {
     }
 }
 
-/// Dialogul propriu: kdialog n-are nici câmpuri numerice, nici fereastră de text.
+/// Our own dialog: kdialog has neither numeric fields nor a text window.
 struct Dialog {
     kind: DlgKind,
     w: u32,
     h: u32,
-    /// Fundalul imaginii noi, respectiv umplerea pânzei adăugate.
+    /// The background of the new image, or the fill of the added canvas.
     color: Color32,
-    /// „Păstrează proporțiile" — doar la Dimensiune imagine.
+    /// "Keep aspect ratio" — only for Image size.
     keep: bool,
-    /// Înălțime / lățime la deschidere: recalcularea pornește mereu de aici,
-    /// ca raportul să nu derive după mai multe modificări.
+    /// Height / width at opening: recomputation always starts from here, so the
+    /// ratio does not drift after several changes.
     ratio: f32,
-    /// Valorile de la cadrul anterior, ca să știm ce latură a schimbat omul.
+    /// The values from the previous frame, so we know which side the user changed.
     last_w: u32,
     last_h: u32,
     text: TextDlg,
@@ -762,8 +763,8 @@ impl Dialog {
     }
 }
 
-/// Comenzile barei și ale tastaturii. Le adunăm într-o listă și le executăm
-/// după ce s-a terminat construirea barei, ca să nu ne batem pe împrumutul lui `self`.
+/// The toolbar and keyboard commands. We collect them into a list and run them
+/// after the bar is done being built, so we do not fight over borrowing `self`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Act {
     Apply,
@@ -796,26 +797,26 @@ enum Act {
     DlgCancel,
 }
 
-/// Valorile implicite din AnnotationOptions.cs, câmp cu câmp.
+/// The defaults from AnnotationOptions.cs, field by field.
 struct Opts {
     border: Color32,
     fill: Color32,
     border_size: f32,
     corner_radius: f32,
     shadow: bool,
-    /// Câte noduri de curbură primesc liniile și săgețile noi
-    /// (ShareX: `LineCenterPointCount`, implicit 1).
+    /// How many curvature nodes new lines and arrows get
+    /// (ShareX: `LineCenterPointCount`, 1 by default).
     line_mid: usize,
 
     text_fill: Color32,
     text_border: Color32,
     text_border_w: f32,
-    /// Implicitele casetei de text cu fundal (și ale balonului).
+    /// The defaults of the text box with a background (and of the balloon).
     text: shape::TextOpts,
 
     outline_border: Color32,
     outline_w: f32,
-    /// Implicitele textului cu contur.
+    /// The defaults of outlined text.
     outline: shape::TextOpts,
 
     step_fill: Color32,
@@ -848,7 +849,7 @@ impl Default for Opts {
 
             outline_border: shape::PRIMARY,
             outline_w: 5.0,
-            // ShareX scrie textul cu contur mai mare și îngroșat
+            // ShareX writes outlined text larger and in bold
             outline: shape::TextOpts {
                 size: 25.0,
                 bold: true,
@@ -858,7 +859,7 @@ impl Default for Opts {
             step_fill: shape::PRIMARY,
             step_border: shape::SECONDARY,
             step_text: Color32::WHITE,
-            // ShareX pornește de la 18; cifrele ieșeau prea mici, deci ~20% mai mare
+            // ShareX starts from 18; the digits came out too small, so ~20% bigger
             step_font: 22.0,
             step_border_w: 0.0,
             step_start: 1,
@@ -883,31 +884,31 @@ struct Editor {
     drag: Option<Drag>,
     tool: Tool,
     opt: Opts,
-    /// Numărul pe care îl va primi următorul contor plasat.
+    /// The number the next step counter placed will get.
     step_next: u32,
     last_save: Option<std::path::PathBuf>,
     status: String,
-    /// Lățimea reală a rândului de butoane, măsurată la cadrul anterior.
-    /// O folosim ca să centrăm bara, ca în ShareX.
+    /// The real width of the button row, measured on the previous frame.
+    /// We use it to center the bar, as in ShareX.
     bar_w: f32,
-    /// Captura de ecran cerută la cadrul anterior, încă neexecutată.
+    /// The screen capture requested on the previous frame, not yet taken.
     pending: Option<Pending>,
-    /// Contor pentru numele texturilor: două imagini inserate nu au voie să
-    /// primească același nume, altfel a doua o suprascrie pe prima.
+    /// A counter for texture names: two inserted images must not get the same
+    /// name, otherwise the second overwrites the first.
     img_seq: u32,
-    /// Săgeata încorporată, decodată la prima folosire.
+    /// The built-in arrow, decoded on first use.
     cursor: Option<Arc<RgbaImage>>,
-    /// Dialogul modal deschis, dacă e vreunul.
+    /// The modal dialog that is open, if there is one.
     dialog: Option<Dialog>,
 }
 
-/// ~/Pictures dacă există, altfel directorul personal.
+/// ~/Pictures if it exists, otherwise the home directory.
 fn pictures_dir() -> PathBuf {
     let p = config::home().join("Pictures");
     if p.is_dir() { p } else { config::home() }
 }
 
-/// ~/.local/share/sxr/stickers, cu XDG_DATA_HOME respectat.
+/// ~/.local/share/sxr/stickers, honoring XDG_DATA_HOME.
 fn stickers_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -917,24 +918,24 @@ fn stickers_dir() -> PathBuf {
         .join("stickers")
 }
 
-/// Extensiile citite ca stickere: exact formatele pe care `image` le decodează
-/// din configurația noastră implicită.
+/// The extensions read as stickers: exactly the formats `image` decodes with
+/// our default configuration.
 const STICKER_EXT: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-/// Cheile ținute minte între sesiuni pentru fereastra de stickere.
+/// The keys remembered between sessions for the sticker window.
 const K_STICKER_SIZE: &str = "sticker_size";
 const K_STICKER_PACK: &str = "sticker_pack";
 
-/// Limitele câmpului `Size:` din `StickerForm`: de la 16 la 256 din 16 în 16,
-/// implicit 64. Aceeași valoare e și latura miniaturii, și latura stickerului
-/// inserat — în original raportul e 1:1, deci un pătrat.
+/// The limits of the `Size:` field in `StickerForm`: from 16 to 256 in steps of
+/// 16, 64 by default. The same value is both the thumbnail side and the side of
+/// the inserted sticker — in the original the ratio is 1:1, so a square.
 const STICKER_MIN: f32 = 16.0;
 const STICKER_MAX: f32 = 256.0;
 const STICKER_STEP: f32 = 16.0;
 const STICKER_DEF: f32 = 64.0;
 
-/// Mărimea salvată. O valoare stricată sau ieșită din limite nu e o eroare de
-/// arătat nimănui: pur și simplu revenim la implicita.
+/// The saved size. A corrupted or out-of-range value is not an error to show
+/// anyone: we simply fall back to the default.
 fn sticker_size_saved() -> f32 {
     config::get(K_STICKER_SIZE)
         .and_then(|v| v.trim().parse::<f32>().ok())
@@ -949,9 +950,9 @@ fn is_sticker(p: &Path) -> bool {
         && p.is_file()
 }
 
-/// Imaginile dintr-un singur folder, fără coborâre în subfoldere. Sortate,
-/// altfel grila ar arăta altfel la fiecare deschidere: `read_dir` nu promite
-/// nicio ordine.
+/// The images in a single folder, without descending into subfolders. Sorted,
+/// otherwise the grid would look different on every opening: `read_dir`
+/// promises no order at all.
 fn sticker_files(dir: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
         .into_iter()
@@ -964,10 +965,10 @@ fn sticker_files(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
-/// Pachetele de stickere. În ShareX un pachet e un folder, deci fiecare
-/// subfolder direct e unul. Rădăcina intră și ea în listă — prima —, dar numai
-/// dacă are fișiere libere: acolo ajung stickerele cât timp nimeni nu le-a
-/// grupat încă, și n-ar avea cum să fie altfel de ajuns la ele.
+/// The sticker packs. In ShareX a pack is a folder, so every direct subfolder
+/// is one. The root goes into the list too — first — but only if it has loose
+/// files: that is where stickers land while nobody has grouped them yet, and
+/// there would be no other way to reach them.
 fn sticker_packs(root: &Path) -> Vec<(String, PathBuf)> {
     let mut subs: Vec<(String, PathBuf)> = std::fs::read_dir(root)
         .into_iter()
@@ -986,9 +987,9 @@ fn sticker_packs(root: &Path) -> Vec<(String, PathBuf)> {
     out
 }
 
-/// Indicii fișierelor care trec de căutare. ShareX caută în calea întreagă, nu
-/// doar în numele fișierului, deci numele unui pachet găsește tot ce e în el.
-/// Fără diferență între majuscule și minuscule.
+/// The indices of the files that pass the search. ShareX searches the whole
+/// path, not just the file name, so a pack's name finds everything inside it.
+/// Case-insensitive.
 fn sticker_filter(files: &[PathBuf], q: &str) -> Vec<usize> {
     let q = q.trim().to_lowercase();
     files
@@ -999,11 +1000,11 @@ fn sticker_filter(files: &[PathBuf], q: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Miniatura unui fișier, decodată o singură dată. `None` = nu se decodează;
-/// îl sărim tăcut, ca un fișier stricat să nu oprească grila. Micșorarea se
-/// face pe CPU, înainte de urcare: la 64 de puncte n-are rost să ținem în GPU
-/// un PNG de 512. Nu mărim niciodată: un sticker mic rămâne cât e și se
-/// întinde abia la desen.
+/// A file's thumbnail, decoded only once. `None` = it does not decode; we skip
+/// it silently, so that one broken file does not stop the grid. The shrinking
+/// is done on the CPU, before upload: at 64 points there is no point keeping a
+/// 512 PNG in the GPU. We never enlarge: a small sticker stays as it is and is
+/// stretched only when drawn.
 fn thumb(
     ctx: &egui::Context,
     cache: &mut HashMap<PathBuf, Option<TextureHandle>>,
@@ -1032,11 +1033,11 @@ fn thumb(
     tex
 }
 
-/// Deschide un folder în managerul de fișiere. `xdg-open` pleacă în fundal
-/// dintr-un `sh` care iese imediat, deci interfața nu stă după el și nu rămâne
-/// nici proces-zombi de așteptat. `command -v` întâi, altfel un `xdg-open`
-/// lipsă ar trece drept reușită: shell-ul iese cu zero oricum, treaba pusă în
-/// fundal fiind a lui, nu a noastră.
+/// Opens a folder in the file manager. `xdg-open` leaves in the background from
+/// an `sh` that exits right away, so the interface does not wait on it and no
+/// zombie process is left to reap. `command -v` first, otherwise a missing
+/// `xdg-open` would pass as success: the shell exits with zero anyway, the
+/// backgrounded job being its business, not ours.
 fn open_dir(dir: &Path) -> anyhow::Result<()> {
     let st = std::process::Command::new("sh")
         .arg("-c")
@@ -1049,8 +1050,8 @@ fn open_dir(dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Dialogul nativ KDE de deschidere. `None` dacă utilizatorul anulează sau
-/// dacă `kdialog` lipsește — în ambele cazuri pur și simplu nu se întâmplă nimic.
+/// The native KDE open dialog. `None` if the user cancels or if `kdialog` is
+/// missing — in both cases nothing happens at all.
 fn pick_image(dir: &Path) -> Option<PathBuf> {
     let out = std::process::Command::new("kdialog")
         .arg("--getopenfilename")
@@ -1072,59 +1073,59 @@ fn to_color_image(img: &RgbaImage) -> egui::ColorImage {
     )
 }
 
-/// Iconița butonului de culoare, redesenată după ShareX
-/// (`ImageHelpers.DrawColorPickerIcon`): pătrat plin cu chenar negru de 1px.
-/// Dacă `hole > 0`, mijlocul rămâne gol și primește și el un chenar — așa
-/// arată butonul „culoare contur", spre deosebire de cel de umplere.
-/// Culoarea transparentă se vede ca tablă de șah, tot ca în ShareX.
-/// Fundal de contrast pentru zona de scris, ca în `ColorHelpers.VisibleColor`:
-/// alb sub un text închis, gri închis sub unul deschis.
-// --------------------------------------- fereastra de introducere a textului
+/// The color button's icon, redrawn after ShareX
+/// (`ImageHelpers.DrawColorPickerIcon`): a filled square with a 1px black
+/// border. If `hole > 0`, the middle stays empty and gets a border of its own —
+/// that is how the "outline color" button looks, as opposed to the fill one.
+/// The transparent color shows as a checkerboard, again as in ShareX.
+/// A contrasting background for the writing area, as in
+/// `ColorHelpers.VisibleColor`: white under dark text, dark gray under light.
+// --------------------------------------------------------- text input window
 
-/// Latura butoanelor pătrate din fereastra de text. În
-/// `TextDrawingInputBox.Designer.cs` toate au `Size = 24, 24`:
-/// culoarea, B / I / U, cele două alinieri și butonul din stânga-jos.
+/// The side of the square buttons in the text window. In
+/// `TextDrawingInputBox.Designer.cs` they all have `Size = 24, 24`:
+/// the color, B / I / U, the two alignments and the bottom-left button.
 const TDLG_BTN: f32 = 24.0;
-/// Lățimea listei de fonturi (`cbFonts.Size = 158, 21`).
+/// The width of the font list (`cbFonts.Size = 158, 21`).
 const TDLG_FONT_W: f32 = 158.0;
-/// Lățimea câmpului numeric fără săgeți (`nudTextSize.Size = 55, 20`).
+/// The width of the numeric field without the arrows (`nudTextSize.Size = 55, 20`).
 const TDLG_NUM_W: f32 = 40.0;
-/// Lățimea săgeților lipite în dreapta câmpului numeric.
+/// The width of the arrows glued to the right of the numeric field.
 const TDLG_ARROW_W: f32 = 14.0;
-/// Lățimea butoanelor OK și Renunță (`btnOK.Size = 104, 24`).
+/// The width of the OK and Cancel buttons (`btnOK.Size = 104, 24`).
 const TDLG_OK_W: f32 = 104.0;
-/// Lățimea zonei utile a ferestrei originale (`$this.ClientSize = 534, 361`);
-/// sub ea bara de sus n-ar mai încăpea pe un rând, deci e și lățimea minimă.
+/// The width of the original window's client area (`$this.ClientSize = 534, 361`);
+/// below it the top bar no longer fits on one row, so it is also the minimum width.
 const TDLG_W: f32 = 534.0;
-/// Fereastra la deschidere. `egui::Window` își desenează singură bara de titlu,
-/// deci pornim de la dimensiunea exterioară a originalului, nu de la zona utilă:
-/// 547x421, cât măsoară `TextDrawingInputBox` pe ecran.
+/// The window at opening. `egui::Window` draws its own title bar, so we start
+/// from the original's outer size, not from the client area: 547x421, which is
+/// what `TextDrawingInputBox` measures on screen.
 const TDLG_WIN_W: f32 = 547.0;
 const TDLG_WIN_H: f32 = 421.0;
 
-// ------------------------------------- fereastra de alegere a stickerelor
+// -------------------------------------------------- sticker picker window
 
-/// Fereastra la deschidere. `StickerForm` din ShareX se deschide pe o zonă
-/// utilă lată cât intră vreo șapte miniaturi de 64 pe un rând; luăm asta ca
-/// măsură, nu cifra exactă a designerului, fiindcă la noi bara de sus e scrisă
-/// cu alt font și ar da alt minim.
+/// The window at opening. ShareX's `StickerForm` opens on a client area wide
+/// enough for about seven 64px thumbnails in a row; we take that as the
+/// measure, not the designer's exact figure, because our top bar is written in
+/// a different font and would give a different minimum.
 const SDLG_WIN_W: f32 = 620.0;
 const SDLG_WIN_H: f32 = 500.0;
-/// Sub asta bara de sus n-ar mai încăpea pe un rând.
+/// Below this the top bar would no longer fit on one row.
 const SDLG_MIN_W: f32 = 470.0;
-/// Spațiul din jurul unei miniaturi, în celula ei.
+/// The space around a thumbnail, inside its cell.
 const SDLG_PAD: f32 = 6.0;
-/// Câmpul de căutare (`txtSearch`) și lista de pachete (`cbStickerPacks`).
+/// The search field (`txtSearch`) and the pack list (`cbStickerPacks`).
 const SDLG_SEARCH_W: f32 = 130.0;
 const SDLG_PACK_W: f32 = 150.0;
 
-/// Butonul pătrat de 24x24 folosit de toate uneltele cu pictogramă.
+/// The 24x24 square button used by every tool with a pictogram.
 fn square_button<'a>() -> egui::Button<'a> {
     egui::Button::new("").min_size(Vec2::splat(TDLG_BTN))
 }
 
-/// B / I / U: buton pătrat cu litera pe el, apăsat cât stilul e pornit.
-/// În original sunt `CheckBox`-uri cu `Appearance.Button`, adică exact asta.
+/// B / I / U: a square button with the letter on it, pressed while the style is on.
+/// In the original these are `CheckBox`es with `Appearance.Button`, which is just this.
 fn style_toggle(ui: &mut egui::Ui, on: &mut bool, letter: egui::RichText, tip: Msg) {
     let r = ui.add(
         egui::Button::new(letter)
@@ -1137,24 +1138,24 @@ fn style_toggle(ui: &mut egui::Ui, on: &mut bool, letter: egui::RichText, tip: M
     r.on_hover_text(t(tip));
 }
 
-/// `NumericUpDown` din WinForms: egui n-are așa ceva, deci lipim un `DragValue`
-/// îngust de două butoane mici cu săgeți, într-o coloană fără spațiere.
-/// `step` e cât mută o săgeată; când e mai mare decât 1, valoarea se și
-/// rotunjește la el, ca `NumericUpDown.Increment` din original.
+/// WinForms' `NumericUpDown`: egui has nothing like it, so we glue a narrow
+/// `DragValue` to two small arrow buttons, in a column without spacing.
+/// `step` is how much one arrow moves; when it is larger than 1, the value is
+/// also rounded to it, like the original's `NumericUpDown.Increment`.
 fn num_up_down(ui: &mut egui::Ui, v: &mut f32, lo: f32, hi: f32, step: f32) {
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         ui.horizontal(|ui| {
-            // textul stă centrat: `DragValue` îl așază ca pe eticheta unui buton
+            // the text sits centered: `DragValue` lays it out like a button's label
             let dv = egui::DragValue::new(v)
                 .range(lo..=hi)
                 .speed(step.max(1.0) * 0.2)
                 .fixed_decimals(0);
             ui.add_sized([TDLG_NUM_W, TDLG_BTN], dv);
 
-            // Cele două săgeți sunt UN singur widget, împărțit în jumătăți:
-            // ca butoane separate, fiecare își cere înălțimea lui minimă și
-            // coloana iese mai înaltă decât câmpul, coborâtă față de el.
+            // The two arrows are ONE single widget, split into halves: as
+            // separate buttons, each asks for its own minimum height and the
+            // column comes out taller than the field, lowered relative to it.
             ui.add_space(3.0);
             let (rect, resp) =
                 ui.allocate_exact_size(Vec2::new(TDLG_ARROW_W, TDLG_BTN), Sense::click());
@@ -1184,7 +1185,7 @@ fn num_up_down(ui: &mut egui::Ui, v: &mut f32, lo: f32, hi: f32, step: f32) {
     });
 }
 
-/// Săgeata unui buton de `NumericUpDown`: triunghi plin, în sus sau în jos.
+/// The arrow of a `NumericUpDown` button: a filled triangle, up or down.
 fn paint_spinner(p: &egui::Painter, rect: Rect, up: bool, c: Color32) {
     let m = rect.center();
     let (w, h) = (3.5, 2.0);
@@ -1200,9 +1201,9 @@ fn paint_spinner(p: &egui::Painter, rect: Rect, up: bool, c: Color32) {
     ));
 }
 
-/// Pictograma de aliniere pe orizontală, după `edit-alignment*` din setul Fugue
-/// (nu e printre iconițele deja aduse în `assets/icons`, deci o desenăm):
-/// patru liniuțe, lungi și scurte alternativ, împinse spre marginea aleasă.
+/// The horizontal alignment pictogram, after `edit-alignment*` from the Fugue
+/// set (it is not among the icons already brought into `assets/icons`, so we
+/// draw it): four bars, long and short alternately, pushed to the chosen edge.
 fn paint_align_h(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
     let b = Rect::from_center_size(rect.center(), Vec2::splat(14.0));
     for (i, long) in [true, false, true, false].into_iter().enumerate() {
@@ -1219,8 +1220,8 @@ fn paint_align_h(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
     }
 }
 
-/// Pictograma de aliniere pe verticală, după `edit-vertical-alignment*`:
-/// o liniuță lungă pe marginea aleasă și două scurte de partea cealaltă.
+/// The vertical alignment pictogram, after `edit-vertical-alignment*`:
+/// one long bar on the chosen edge and two short ones on the other side.
 fn paint_align_v(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
     let b = Rect::from_center_size(rect.center(), Vec2::splat(14.0));
     let bar = |y: f32, w: f32| {
@@ -1251,8 +1252,8 @@ fn paint_align_v(p: &egui::Painter, rect: Rect, a: shape::Align, c: Color32) {
     }
 }
 
-/// Pictograma butonului din stânga-jos (`btnSwapEnterKey`, iconița Fugue
-/// `keyboard-enter`): săgeata de Enter, cu cotul în dreapta-sus.
+/// The bottom-left button's pictogram (`btnSwapEnterKey`, the Fugue icon
+/// `keyboard-enter`): the Enter arrow, with the elbow at the top right.
 fn paint_enter_key(p: &egui::Painter, rect: Rect, c: Color32) {
     let b = Rect::from_center_size(rect.center(), Vec2::splat(12.0));
     let s = egui::Stroke::new(1.5, c);
@@ -1277,7 +1278,7 @@ fn draw_color_icon(p: &egui::Painter, rect: Rect, c: Color32, hole: f32) {
     let z = egui::CornerRadius::ZERO;
     let black = egui::Stroke::new(1.0, Color32::BLACK);
     let h = Rect::from_center_size(rect.center(), Vec2::splat(hole));
-    // partea plină: tot pătratul, mai puțin gaura din mijloc
+    // the solid part: the whole square, minus the hole in the middle
     let parts = if hole > 0.0 {
         vec![
             Rect::from_min_max(rect.min, Pos2::new(rect.max.x, h.min.y)),
@@ -1309,8 +1310,8 @@ fn draw_color_icon(p: &egui::Painter, rect: Rect, c: Color32, hole: f32) {
     }
 }
 
-/// Buton de culoare cu iconița de mai sus, care deschide același selector de
-/// culoare al egui ca `color_edit_button_srgba` — doar desenul butonului diferă.
+/// A color button with the icon above, which opens the same egui color picker
+/// as `color_edit_button_srgba` — only the drawing of the button differs.
 fn color_button(ui: &mut egui::Ui, id_salt: &str, color: &mut Color32, hole: f32, tip: &str) {
     let side = 16.0;
     let size = Vec2::splat(side) + ui.spacing().button_padding * 2.0;
@@ -1425,9 +1426,9 @@ impl Editor {
         }
     }
 
-    // ------------------------------------------------------------- schițe
+    // ------------------------------------------------------------- drafts
 
-    /// Forma de pornire pentru unealta curentă. `None` = unealta nu desenează nimic.
+    /// The starting shape for the current tool. `None` = the tool draws nothing.
     fn new_draft(&self, at: Pos2) -> Option<Shape> {
         let o = &self.opt;
         let r = Rect::from_min_max(at, at);
@@ -1445,8 +1446,8 @@ impl Editor {
                 fill: o.fill,
                 width: o.border_size,
             },
-            // nodurile de mijloc pornesc toate din punctul de plecare;
-            // `update_draft` le împrăștie pe linie pe măsură ce tragi
+            // the middle nodes all start from the starting point;
+            // `update_draft` spreads them along the line as you drag
             Tool::Line => Shape::Line {
                 from: at,
                 to: at,
@@ -1479,8 +1480,8 @@ impl Editor {
             Tool::Pixelate => Shape::Pixelate { rect: r, block: o.pixelate },
             Tool::Blur => Shape::Blur { rect: r, radius: o.blur },
             Tool::Spotlight => Shape::Spotlight { rect: r },
-            // culoarea gumei se calculează din inelul din jur; la schiță e încă
-            // goală, update_draft o reface pe măsură ce tragi cu mouse-ul
+            // the eraser's color is computed from the ring around it; on the draft it
+            // is still empty, update_draft rebuilds it as you drag with the mouse
             Tool::SmartEraser => Shape::Erase { rect: r, color: Color32::BLACK },
             Tool::TextOutline => Shape::Text {
                 rect: r,
@@ -1500,7 +1501,7 @@ impl Editor {
                 outline_w: 0.0,
                 radius: o.corner_radius,
             },
-            // coada balonului se așază abia la commit, când caseta e finală
+            // the balloon's tail is placed only at commit, when the box is final
             Tool::SpeechBalloon => Shape::Balloon {
                 rect: r,
                 tail: at,
@@ -1526,8 +1527,7 @@ impl Editor {
                 text: o.step_text,
                 width: o.step_border_w,
             },
-            // decuparea și tăierea de fâșie folosesc un chenar simplu,
-            // nu culorile de adnotare
+            // crop and cut out use a plain frame, not the annotation colors
             Tool::Crop | Tool::CutOut => Shape::Rect {
                 rect: r,
                 border: Color32::WHITE,
@@ -1568,8 +1568,8 @@ impl Editor {
             Some(Shape::Step { center, .. }) => *center = at,
             None => {}
         }
-        // guma inteligentă își ia culoarea din inelul din jurul dreptunghiului;
-        // o recalculăm cât timp o tragi, apoi rămâne fixă chiar dacă forma e mutată
+        // the smart eraser takes its color from the ring around the rectangle;
+        // we recompute it while you drag, then it stays fixed even if the shape moves
         if let Some(Shape::Erase { rect, .. }) = &self.draft {
             let c = shape::ring_avg(&self.img, *rect);
             if let Some(Shape::Erase { color, .. }) = self.draft.as_mut() {
@@ -1578,7 +1578,7 @@ impl Editor {
         }
     }
 
-    /// Schița e destul de mare cât să merite păstrată?
+    /// Is the draft big enough to be worth keeping?
     fn big_enough(s: &Shape) -> bool {
         match s {
             Shape::Rect { rect, .. }
@@ -1594,16 +1594,16 @@ impl Editor {
             | Shape::Text { rect, .. } => rect.width().abs() > 2.0 && rect.height().abs() > 2.0,
             Shape::Arrow { from, to, .. } | Shape::Line { from, to, .. } => from.distance(*to) > 3.0,
             Shape::Free { pts, .. } => pts.len() > 1,
-            // contorul se plasează dintr-un simplu clic
+            // the step counter is placed with a simple click
             Shape::Step { .. } => true,
         }
     }
 
     fn commit_draft(&mut self) {
         let Some(mut s) = self.draft.take() else { return };
-        // tragerea de la dreapta la stânga (sau de jos în sus) lasă `max < min`;
-        // `update_draft` nu are voie să normalizeze, altfel ancora ar migra odată
-        // cu cursorul, deci îndreptăm dreptunghiul abia aici, la commit
+        // dragging right to left (or bottom to top) leaves `max < min`;
+        // `update_draft` must not normalize, otherwise the anchor would migrate
+        // along with the cursor, so we straighten the rectangle here, at commit
         s.normalize();
 
         if matches!(self.tool, Tool::Crop | Tool::CutOut) {
@@ -1617,8 +1617,8 @@ impl Editor {
             return;
         }
 
-        // o casetă de text (sau un balon) trasă prea scurt primește o dimensiune
-        // implicită, altfel un clic nesigur ar pierde forma
+        // a text box (or a balloon) dragged too short gets a default size,
+        // otherwise an unsteady click would lose the shape
         if let Shape::Text { rect, opts, .. } | Shape::Balloon { rect, opts, .. } = &mut s {
             let n = Rect::from_two_pos(rect.min, rect.max);
             *rect = if n.width() < 12.0 || n.height() < 12.0 {
@@ -1627,7 +1627,7 @@ impl Editor {
                 n
             };
         }
-        // coada pornește cu 30px sub colțul din stânga-jos al casetei
+        // the tail starts 30px below the box's bottom-left corner
         if let Shape::Balloon { rect, tail, .. } = &mut s {
             *tail = rect.left_bottom() + Vec2::new(0.0, 30.0);
         }
@@ -1640,11 +1640,11 @@ impl Editor {
         self.push_undo(false);
         self.shapes.push(s);
         let i = self.shapes.len() - 1;
-        // ca în ShareX: forma abia trasă rămâne activă, cu nodurile la vedere,
-        // ca să o poți ajusta imediat, fără să treci pe unealta de selecție
+        // as in ShareX: the freshly drawn shape stays active, with its nodes visible,
+        // so you can adjust it right away without switching to the selection tool
         self.sel = Some(i);
         if is_text {
-            // ca în ShareX: forma abia trasă deschide fereastra de text
+            // as in ShareX: the freshly drawn shape opens the text window
             self.open_text(i, true);
         }
         if is_step {
@@ -1652,11 +1652,11 @@ impl Editor {
         }
     }
 
-    // ----------------------------------------------------- imagini inserate
+    // ------------------------------------------------------ inserted images
 
-    /// Inserează o imagine ca formă nouă: la dimensiunea nativă, cu colțul din
-    /// stânga-sus în punctul de clic, micșorată proporțional dacă n-ar încăpea
-    /// în imaginea de fundal.
+    /// Inserts an image as a new shape: at native size, with the top-left corner
+    /// at the click point, shrunk proportionally if it would not fit in the
+    /// background image.
     fn stamp(&mut self, ctx: &egui::Context, at: Pos2, img: Arc<RgbaImage>) {
         let (iw, ih) = (img.width() as f32, img.height() as f32);
         let k = (self.img.width() as f32 / iw.max(1.0))
@@ -1665,14 +1665,15 @@ impl Editor {
         self.stamp_rect(ctx, Rect::from_min_size(at, Vec2::new(iw * k, ih * k)), img);
     }
 
-    /// Inserează o imagine într-un pătrat cu latura dată, cu colțul în punctul
-    /// de clic: drumul stickerelor, unde mărimea aleasă în fereastră bate
-    /// dimensiunea nativă a fișierului.
+    /// Inserts an image into a square of the given side, with the corner at the
+    /// click point: the stickers' path, where the size chosen in the window beats
+    /// the file's native size.
     fn stamp_sized(&mut self, ctx: &egui::Context, at: Pos2, img: Arc<RgbaImage>, side: f32) {
         self.stamp_rect(ctx, Rect::from_min_size(at, Vec2::splat(side)), img);
     }
 
-    /// Partea comună: urcă textura, adaugă forma și trece pe unealta de selecție.
+    /// The common part: uploads the texture, adds the shape and switches to the
+    /// selection tool.
     fn stamp_rect(&mut self, ctx: &egui::Context, rect: Rect, img: Arc<RgbaImage>) {
         let (iw, ih) = (img.width() as f32, img.height() as f32);
         if iw < 1.0 || ih < 1.0 {
@@ -1687,14 +1688,14 @@ impl Editor {
         );
         self.push_undo(false);
         self.shapes.push(Shape::Img { rect, img, tex });
-        // trecem pe unealta de selecție: altfel `sel` s-ar șterge la cadrul
-        // următor (vezi `ui`) și forma abia pusă n-ar mai putea fi trasă
+        // we switch to the selection tool: otherwise `sel` would be cleared on the
+        // next frame (see `ui`) and the shape just placed could no longer be dragged
         self.tool = Tool::Select;
         self.sel = Some(self.shapes.len() - 1);
         self.status = i18n::image_inserted(iw as u32, ih as u32);
     }
 
-    /// Încarcă un fișier de pe disc și îl ștampilează. La eroare doar anunță.
+    /// Loads a file from disk and stamps it. On error it only reports.
     fn stamp_file(&mut self, ctx: &egui::Context, at: Pos2, path: &Path) {
         match image::open(path) {
             Ok(i) => self.stamp(ctx, at, Arc::new(i.to_rgba8())),
@@ -1702,7 +1703,7 @@ impl Editor {
         }
     }
 
-    /// Săgeata clasică, încorporată în binar și decodată o singură dată.
+    /// The classic arrow, embedded in the binary and decoded only once.
     fn cursor_img(&mut self) -> Option<Arc<RgbaImage>> {
         if self.cursor.is_none() {
             const PNG: &[u8] = include_bytes!("../assets/cursor.png");
@@ -1714,8 +1715,8 @@ impl Editor {
         self.cursor.clone()
     }
 
-    /// Uneltele care inserează o imagine: se plasează dintr-un singur clic.
-    /// Dialogurile și captura blochează firul de interfață cât rulează.
+    /// The tools that insert an image: they are placed with a single click.
+    /// The dialogs and the capture block the UI thread while they run.
     fn stamp_tool(&mut self, ctx: &egui::Context, at: Pos2) {
         match self.tool {
             Tool::ImageFile => {
@@ -1729,26 +1730,26 @@ impl Editor {
                     self.status = i18n::cannot_create(&dir.display().to_string(), &e.to_string());
                     return;
                 }
-                // fereastra pe un folder gol n-ar avea ce arăta
+                // the window on an empty folder would have nothing to show
                 let packs = sticker_packs(&dir);
                 if packs.is_empty() {
                     self.status = i18n::put_png_files_in(&dir.display().to_string());
                     return;
                 }
-                // stickerul se inserează abia după ce se alege unul: fereastra
-                // e a noastră, deci nu blochează firul de interfață ca kdialog
+                // the sticker is inserted only after one is chosen: the window
+                // is ours, so it does not block the UI thread like kdialog
                 self.open_sticker(dir, at, false);
             }
             Tool::Cursor => {
-                // vârful săgeții e chiar pixelul din stânga-sus al imaginii,
-                // deci colțul formei cade exact în punctul de clic
+                // the arrow's tip is the very top-left pixel of the image,
+                // so the shape's corner falls exactly on the click point
                 if let Some(c) = self.cursor_img() {
                     self.stamp(ctx, at, c);
                 }
             }
             Tool::ImageScreen => {
-                // fereastra trebuie să apuce să dispară înainte de spectacle:
-                // trimitem comanda acum, captura vine la cadrul următor
+                // the window has to get out of the way before spectacle runs:
+                // we send the command now, the capture comes on the next frame
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                 ctx.request_repaint();
                 self.pending = Some(Pending::Screen { at, center: false });
@@ -1758,22 +1759,22 @@ impl Editor {
         }
     }
 
-    /// Inserarea cerută din meniul „Imagine": aceleași unelte, doar că
-    /// pornite fără clic, iar forma se așază în centrul imaginii.
+    /// Insertion requested from the "Image" menu: the same tools, only started
+    /// without a click, and the shape is placed in the center of the image.
     fn stamp_menu(&mut self, ctx: &egui::Context, t: Tool) {
         let prev = self.tool;
         self.tool = t;
         let at = Pos2::new(self.img.width() as f32 / 2.0, self.img.height() as f32 / 2.0);
         if t == Tool::ImageScreen {
             self.stamp_tool(ctx, at);
-            // captura vine abia la cadrul următor; marcăm centrarea acolo
+            // the capture comes only on the next frame; we mark the centering there
             if let Some(Pending::Screen { center, .. }) = self.pending.as_mut() {
                 *center = true;
             }
         } else if t == Tool::Sticker {
             self.stamp_tool(ctx, at);
-            // alegerea vine abia peste câteva cadre, din fereastra de stickere;
-            // centrarea o marcăm acolo, ca la captura de ecran
+            // the choice comes only a few frames later, from the sticker window;
+            // we mark the centering there, as with the screen capture
             if let Some(d) = self.dialog.as_mut() {
                 d.sticker.center = true;
             }
@@ -1784,13 +1785,13 @@ impl Editor {
                 self.center_last();
             }
         }
-        // `stamp` trece pe unealta de selecție când reușește; altfel ne întoarcem
+        // `stamp` switches to the selection tool on success; otherwise we go back
         if self.tool == t {
             self.tool = prev;
         }
     }
 
-    /// Mută ultima formă inserată în centrul imaginii.
+    /// Moves the last inserted shape to the center of the image.
     fn center_last(&mut self) {
         let c = Pos2::new(self.img.width() as f32 / 2.0, self.img.height() as f32 / 2.0);
         if let Some(s) = self.shapes.last_mut() {
@@ -1799,13 +1800,13 @@ impl Editor {
         }
     }
 
-    /// Acțiunea amânată un cadru de `stamp_tool`.
+    /// The action `stamp_tool` deferred by one frame.
     fn run_pending(&mut self, ctx: &egui::Context) {
         let Some(p) = self.pending.take() else { return };
         match p {
             Pending::Screen { at, center } => {
                 let shot = crate::capture::select_region();
-                // fereastra se întoarce orice ar fi ieșit din captură
+                // the window comes back whatever came out of the capture
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.request_repaint();
                 match shot {
@@ -1821,10 +1822,10 @@ impl Editor {
         }
     }
 
-    // ------------------------------------------------- fereastra de text
+    // ------------------------------------------------------- text window
 
-    /// Deschide fereastra de introducere a textului pentru forma `i`.
-    /// `fresh` = forma tocmai a fost creată (pasul de undo e deja pus).
+    /// Opens the text input window for shape `i`.
+    /// `fresh` = the shape has just been created (the undo step is already pushed).
     fn open_text(&mut self, i: usize, fresh: bool) {
         let Some(t) = self.shapes.get(i).and_then(Shape::text_of) else { return };
         let (w, h) = self.img.dimensions();
@@ -1842,10 +1843,10 @@ impl Editor {
         self.sel = None;
     }
 
-    /// Închiderea ferestrei. `ok` = s-a apăsat OK (sau Enter).
+    /// Closing the window. `ok` = OK was pressed (or Enter).
     fn text_done(&mut self, t: TextDlg, ok: bool) {
-        // ShareX cheamă OnConfigSave după dialog, indiferent de buton:
-        // opțiunile alese rămân implicite pentru textele următoare
+        // ShareX calls OnConfigSave after the dialog, whatever the button:
+        // the chosen options stay the defaults for the texts that follow
         if t.outline {
             self.opt.outline = t.opts.clone();
             self.opt.outline_border = t.color2;
@@ -1855,12 +1856,12 @@ impl Editor {
         }
         let drop = !ok || t.buf.trim().is_empty();
         if drop {
-            // renunțare pe o formă existentă: rămâne neatinsă
+            // cancelling on an existing shape: it stays untouched
             if !ok && !t.fresh {
                 return;
             }
             if t.fresh {
-                // n-a existat niciodată cu conținut: scoatem și pasul de undo
+                // it never existed with content: we drop the undo step as well
                 self.undo.pop();
             } else {
                 self.push_undo(false);
@@ -1877,12 +1878,12 @@ impl Editor {
         if let Some(s) = self.shapes.get_mut(t.idx) {
             s.set_text(t.buf, t.opts, t.color2);
         }
-        // ca în ShareX: după închiderea ferestrei caseta rămâne activă, cu
-        // nodurile la vedere, ca să se poată muta sau redimensiona imediat
+        // as in ShareX: after the window closes the box stays active, with its
+        // nodes visible, so it can be moved or resized right away
         self.sel = Some(t.idx);
     }
 
-    // ------------------------------------------------------------- editare
+    // ------------------------------------------------------------- editing
 
     fn delete_sel(&mut self) {
         let Some(i) = self.sel.take() else {
@@ -1971,13 +1972,13 @@ impl Editor {
         self.status = i18n::cropped_to(self.img.width(), self.img.height());
     }
 
-    /// Taie o fâșie din imagine și lipește cele două jumătăți. Aceeași
-    /// mecanică de undo ca decuparea: pasul salvează și imaginea.
+    /// Cuts a band out of the image and glues the two halves together. The same
+    /// undo mechanics as crop: the step saves the image too.
     fn apply_cutout(&mut self, r: Rect) {
         let Some((img, horiz, end, band)) = cut_out(&self.img, r) else { return };
         self.push_undo(true);
         self.img = img;
-        // formele de dincolo de fâșie se apropie cu grosimea ei
+        // the shapes beyond the band move closer by its thickness
         let d = if horiz { Vec2::new(0.0, -band) } else { Vec2::new(-band, 0.0) };
         for s in self.shapes.iter_mut() {
             let b = s.bounds();
@@ -1991,15 +1992,15 @@ impl Editor {
     }
 
 
-    // ------------------------------------------------- operații pe imagine
+    // ---------------------------------------------------- image operations
 
     fn set_img(&mut self, img: RgbaImage) {
         self.img = img;
         self.tex.set(to_color_image(&self.img), egui::TextureOptions::LINEAR);
     }
 
-    /// Imaginea cu formele desenate în ea. `None` dacă nu sunt forme (sau dacă
-    /// randarea eșuează, caz în care rămâne un mesaj în bara de stare).
+    /// The image with the shapes drawn into it. `None` if there are no shapes (or
+    /// if the render fails, in which case a message is left in the status bar).
     fn flat_img(&mut self) -> Option<RgbaImage> {
         if self.shapes.is_empty() {
             return None;
@@ -2015,9 +2016,9 @@ impl Editor {
         }
     }
 
-    /// Desenează formele în imagine și golește lista. Rotirea unei casete de
-    /// text ar cere text rotit, pe care nu-l desenăm; aplatizarea păstrează
-    /// exact ce vede utilizatorul. Se cheamă DUPĂ `push_undo(true)`.
+    /// Draws the shapes into the image and clears the list. Rotating a text box
+    /// would need rotated text, which we do not draw; flattening keeps exactly
+    /// what the user sees. Called AFTER `push_undo(true)`.
     fn flatten(&mut self) -> bool {
         let Some(flat) = self.flat_img() else { return false };
         self.set_img(flat);
@@ -2031,7 +2032,7 @@ impl Editor {
         self.step_next = self.opt.step_start;
     }
 
-    /// Mesajul de stare, cu mențiunea aplatizării dacă a avut loc.
+    /// The status message, mentioning the flattening if it happened.
     fn note(&mut self, msg: String, flat: bool) {
         self.status = if flat { i18n::with_flattened(&msg) } else { msg };
     }
@@ -2062,8 +2063,8 @@ impl Editor {
         self.note(i18n::opened(&p.display().to_string(), w, h), flat);
     }
 
-    /// Redimensionare: singura operație care NU aplatizează — formele se
-    /// scalează cu același factor și rămân editabile.
+    /// Resize: the only operation that does NOT flatten — the shapes are scaled
+    /// by the same factor and stay editable.
     fn img_resize(&mut self, w: u32, h: u32) {
         let (ow, oh) = self.img.dimensions();
         let (w, h) = (w.max(1), h.max(1));
@@ -2090,8 +2091,8 @@ impl Editor {
     }
 
     fn img_autocrop(&mut self) {
-        // marginile se caută pe imaginea cu formele deja desenate: altfel o
-        // formă lipită de margine ar rămâne pe dinafară după tăiere
+        // the edges are searched on the image with the shapes already drawn:
+        // otherwise a shape flush with an edge would be left out after the cut
         let flat = self.flat_img();
         let out = {
             let base = flat.as_ref().unwrap_or(&self.img);
@@ -2179,7 +2180,7 @@ impl Editor {
                     }
                     ui.end_row();
                 });
-                // latura schimbată o trage pe cealaltă după ea
+                // the changed side pulls the other one after it
                 if d.kind == DlgKind::Size && d.keep {
                     if d.w != d.last_w {
                         d.h = ((d.w as f32 * d.ratio).round() as u32).max(1);
@@ -2204,15 +2205,15 @@ impl Editor {
     }
 
 
-    /// Fereastra de introducere a textului, după `TextDrawingInputBox`.
-    /// Așezarea vine din `TextDrawingInputBox.Designer.cs` și din `.resx`-ul lui:
-    /// `flpProperties` (bara de sus) 518x32 la 8,5, `txtInput` 518x281 la 8,40 cu
-    /// chenar simplu, iar jos `btnSwapEnterKey` 24x24 la 8,328, `lblTip` lângă el
-    /// și `btnOK` / `btnCancel` de 104x24 lipite în dreapta. Client: 534x361.
+    /// The text input window, after `TextDrawingInputBox`. The layout comes from
+    /// `TextDrawingInputBox.Designer.cs` and its `.resx`: `flpProperties` (the top
+    /// bar) 518x32 at 8,5, `txtInput` 518x281 at 8,40 with a plain border, and at
+    /// the bottom `btnSwapEnterKey` 24x24 at 8,328, `lblTip` next to it and
+    /// `btnOK` / `btnCancel` of 104x24 glued to the right. Client: 534x361.
     fn text_dialog_ui(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         let Some(d) = self.dialog.as_mut() else { return };
         let td = &mut d.text;
-        // familia aleasă se încarcă o dată și rămâne în egui pentru desen
+        // the chosen family is loaded once and stays in egui for drawing
         font::register(ctx, &td.opts);
         if let Some(n) = font::take_note() {
             self.status = n;
@@ -2225,10 +2226,10 @@ impl Editor {
             .min_size([TDLG_W, 200.0])
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                // toate controalele barei au aceeași înălțime, ca în original
+                // all the controls of the bar have the same height, as in the original
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
                 ui.spacing_mut().interact_size = Vec2::splat(TDLG_BTN);
-                // ---- bara de unelte: un singur rând, ca `flpProperties`
+                // ---- toolbar: a single row, like `flpProperties`
                 ui.horizontal(|ui| {
                     ui.label(t(Msg::LblFont));
                     egui::ComboBox::from_id_salt("sxr-font")
@@ -2244,19 +2245,19 @@ impl Editor {
                             }
                         });
                     ui.label(t(Msg::LblTextSize));
-                    // `nudTextSize`: minim 5, maxim 300, din 1 în 1
+                    // `nudTextSize`: minimum 5, maximum 300, in steps of 1
                     num_up_down(ui, &mut td.opts.size, 5.0, 300.0, 1.0);
                     ui.color_edit_button_srgba(&mut td.opts.color)
                         .on_hover_text(t(Msg::TipTextColor));
-                    // `btnGradient` stă tot aici, dar `Visible` îl aprinde numai
-                    // pentru formele cu degrade, iar sxr nu desenează degrade:
-                    // rămâne un singur buton de culoare, ca în captura originalului.
+                    // `btnGradient` lives here too, but `Visible` turns it on only
+                    // for shapes with a gradient, and sxr draws no gradients:
+                    // one single color button is left, as in the original's screenshot.
                     let rt = egui::RichText::new;
                     style_toggle(ui, &mut td.opts.bold, rt("B").strong(), Msg::TipBold);
                     style_toggle(ui, &mut td.opts.italic, rt("I").italics(), Msg::TipItalic);
                     style_toggle(ui, &mut td.opts.underline, rt("U").underline(), Msg::TipUnderline);
-                    // alinierile: butoane pătrate cu pictogramă, cu meniu la clic,
-                    // exact ca `btnAlignmentHorizontal` / `btnAlignmentVertical`
+                    // the alignments: square pictogram buttons with a menu on click,
+                    // exactly like `btnAlignmentHorizontal` / `btnAlignmentVertical`
                     let (r, _) = MenuButton::from_button(square_button()).ui(ui, |ui| {
                         for a in shape::Align::ALL {
                             if ui.button(a.horiz_name()).clicked() {
@@ -2280,7 +2281,7 @@ impl Editor {
                     paint_align_v(ui.painter(), r.rect, td.opts.valign, c);
                     r.on_hover_text(t(Msg::TipAlignVert));
                 });
-                // ---- zona de scris: tot restul ferestrei, cu chenar
+                // ---- the writing area: all the rest of the window, with a border
                 let h = (ui.available_height() - TDLG_BTN - ui.spacing().item_spacing.y).max(60.0);
                 let bg = visible_bg(td.opts.color);
                 {
@@ -2295,13 +2296,13 @@ impl Editor {
                         .background_color(bg)
                         .desired_width(f32::INFINITY);
                     let r = ui.add_sized([ui.available_width(), h], te);
-                    // prima deschidere: cursorul e direct în text
+                    // first opening: the cursor is right in the text
                     if td.focus {
                         td.focus = false;
                         r.request_focus();
                     }
                 }
-                // ---- rândul de jos
+                // ---- the bottom row
                 ui.horizontal(|ui| {
                     let r = ui.add(square_button());
                     let c = ui.style().interact(&r).fg_stroke.color;
@@ -2332,16 +2333,16 @@ impl Editor {
         }
     }
 
-    // ------------------------------------- fereastra de alegere a stickerelor
+    // -------------------------------------------------- sticker picker window
 
-    /// Deschide fereastra de alegere a stickerelor peste pânză. `at` = punctul
-    /// în care ajunge stickerul, `center` = cererea vine din meniu.
+    /// Opens the sticker picker window over the canvas. `at` = the point where the
+    /// sticker lands, `center` = the request comes from the menu.
     fn open_sticker(&mut self, root: PathBuf, at: Pos2, center: bool) {
         let (w, h) = self.img.dimensions();
         let mut d = Dialog::new(DlgKind::Sticker, w, h);
         let packs = sticker_packs(&root);
-        // pachetul se ține minte după nume, nu după poziție: folderele apar și
-        // dispar între sesiuni, deci un indice salvat ar arăta cu totul altceva
+        // the pack is remembered by name, not by position: folders appear and
+        // disappear between sessions, so a saved index would show something else
         let want = config::get(K_STICKER_PACK).unwrap_or_default();
         let pack = packs.iter().position(|(n, _)| *n == want).unwrap_or(0);
         d.sticker = StickerDlg {
@@ -2359,11 +2360,11 @@ impl Editor {
         self.sel = None;
     }
 
-    /// Închiderea ferestrei. `ok` = s-a ales un sticker (clic sau Enter).
+    /// Closing the window. `ok` = a sticker was chosen (click or Enter).
     fn sticker_done(&mut self, ctx: &egui::Context, sd: StickerDlg, ok: bool) {
-        // ca la fereastra de text: alegerile din bară rămân implicitele de data
-        // viitoare, indiferent de butonul cu care s-a închis. O singură scriere
-        // pentru amândouă, ca fișierul să nu fie rescris de două ori.
+        // as with the text window: the choices in the bar stay the defaults for
+        // next time, whatever button closed it. A single write for both, so the
+        // file is not rewritten twice.
         let mut c = config::Config::load();
         c.set(K_STICKER_SIZE, &format!("{}", sd.size as u32));
         if let Some((n, _)) = sd.packs.get(sd.pack) {
@@ -2387,11 +2388,11 @@ impl Editor {
         }
     }
 
-    /// Fereastra de alegere a stickerelor, după `StickerForm`: sus, pe un singur
-    /// rând, `Search:` cu câmpul lui, `Stickers:` cu lista de pachete, butonul
-    /// cu roată și `Size:`; dedesubt, grila derulabilă de miniaturi pătrate, cu
-    /// numele fișierului scris sub fiecare și trunchiat cu „…". Clicul pe o
-    /// miniatură alege și închide pe loc — original n-are buton de OK.
+    /// The sticker picker window, after `StickerForm`: at the top, on a single
+    /// row, `Search:` with its field, `Stickers:` with the pack list, the gear
+    /// button and `Size:`; below, the scrollable grid of square thumbnails, with
+    /// the file name written under each and truncated with "…". Clicking a
+    /// thumbnail picks and closes on the spot — the original has no OK button.
     fn sticker_dialog_ui(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         let icons = self.icons.clone();
         let Some(d) = self.dialog.as_mut() else { return };
@@ -2408,14 +2409,14 @@ impl Editor {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
                 ui.spacing_mut().interact_size = Vec2::splat(TDLG_BTN);
-                // ---- bara de sus: un singur rând, ca în original
+                // ---- the top bar: a single row, as in the original
                 ui.horizontal(|ui| {
-                    // etichetele au `Margin = Padding(2, 1, 0, 2)`, adică stau
-                    // lipite de controlul din dreapta lor
+                    // the labels have `Margin = Padding(2, 1, 0, 2)`, that is they
+                    // sit glued to the control on their right
                     ui.label(t(Msg::LblSearch));
-                    // `txtSearch` are `BorderStyle.FixedSingle`: un chenar de
-                    // 1px, la fel și când e focalizat. egui pune altfel un inel
-                    // gros și deschis, care ar sări în ochi mai tare decât grila.
+                    // `txtSearch` has `BorderStyle.FixedSingle`: a 1px border, the
+                    // same when focused. egui otherwise puts a thick, light ring
+                    // there, which would catch the eye more than the grid itself.
                     let v = &mut ui.visuals_mut();
                     v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, SEL_BORDER);
                     v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0x5A));
@@ -2434,7 +2435,7 @@ impl Editor {
                     }
                     ui.label(t(Msg::LblStickerPack));
                     let cur = sd.packs.get(sd.pack).map(|(n, _)| n.clone()).unwrap_or_default();
-                    // `DropDownList`: se alege din listă, nu se scrie în ea
+                    // `DropDownList`: you pick from the list, you do not type in it
                     egui::ComboBox::from_id_salt("sxr-sticker-pack")
                         .width(SDLG_PACK_W)
                         .selected_text(cur)
@@ -2447,9 +2448,9 @@ impl Editor {
                                 }
                             }
                         });
-                    // roata: în ShareX deschide managerul de pachete, pe care
-                    // sxr nu-l are — la noi deschide folderul pachetului, adică
-                    // exact locul în care se adaugă și se șterg stickere
+                    // the gear: in ShareX it opens the pack manager, which sxr
+                    // does not have — here it opens the pack's folder, that is
+                    // exactly where stickers are added and removed
                     let r = ui
                         .add(egui::Button::image(icons.img("gear")))
                         .on_hover_text(t(Msg::TipStickerFolder));
@@ -2458,14 +2459,14 @@ impl Editor {
                     let before = sd.size;
                     num_up_down(ui, &mut sd.size, STICKER_MIN, STICKER_MAX, STICKER_STEP);
                     if sd.size != before {
-                        // miniaturile sunt urcate la mărimea de dinainte: la
-                        // alta n-ar mai fi nici destul de fine, nici de folos
+                        // the thumbnails were uploaded at the previous size:
+                        // at another one they are neither sharp enough nor useful
                         sd.thumbs.clear();
                     }
                 });
                 ui.separator();
 
-                // ---- grila: umple restul ferestrei
+                // ---- the grid: fills the rest of the window
                 if sd.hits.is_empty() {
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
@@ -2475,7 +2476,7 @@ impl Editor {
                 }
                 let line = ui.text_style_height(&egui::TextStyle::Body);
                 let cell = Vec2::new(sd.size + SDLG_PAD * 2.0, sd.size + SDLG_PAD * 2.0 + line);
-                // bara de derulare din dreapta mănâncă și ea din lățime
+                // the scroll bar on the right eats into the width as well
                 let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin;
                 let cols = (((ui.available_width() - bar) / cell.x).floor() as usize).max(1);
                 let rows = sd.hits.len().div_ceil(cols);
@@ -2485,8 +2486,8 @@ impl Editor {
                 let StickerDlg { files, hits, thumbs, sel, size, .. } = sd;
                 let side = *size;
                 ui.scope(|ui| {
-                    // rândurile trebuie să vină exact din `cell.y` puncte în
-                    // `cell.y` puncte, altfel `show_rows` desenează alături
+                    // the rows have to come exactly every `cell.y` points,
+                    // otherwise `show_rows` draws them off to the side
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
                     egui::ScrollArea::vertical()
                         .auto_shrink([false; 2])
@@ -2530,10 +2531,10 @@ impl Editor {
                                                 Color32::WHITE,
                                             );
                                         }
-                                        // numele dedesubt, trunchiat cu „…":
-                                        // `max_rows = 1` pune singur caracterul.
-                                        // Fără extensie, ca în ShareX: eticheta
-                                        // ar fi altfel pe jumătate „.png".
+                                        // the name underneath, truncated with "…":
+                                        // `max_rows = 1` adds the character itself.
+                                        // Without the extension, as in ShareX: the
+                                        // label would otherwise be half ".png".
                                         let name = p
                                             .file_stem()
                                             .map(|n| n.to_string_lossy().into_owned())
@@ -2566,7 +2567,7 @@ impl Editor {
             sd.refilter();
         }
         if let Some(p) = chosen {
-            // clicul alege și închide, fără buton de OK
+            // the click picks and closes, with no OK button
             sd.picked = Some(p);
             acts.push(Act::DlgOk);
         }
@@ -2578,7 +2579,7 @@ impl Editor {
         }
     }
 
-    // ------------------------------------------------------------- ieșire
+    // ------------------------------------------------------------- output
 
     fn png(&self) -> Result<Vec<u8>> {
         render::compose_opts(&self.img, &self.shapes, self.opt.shadow)
@@ -2614,9 +2615,9 @@ impl Editor {
         }
     }
 
-    // ------------------------------------------------------------- culori
+    // ------------------------------------------------------------- colors
 
-    /// ShareX scrie culoarea de contur în câmpul uneltei curente, nu într-unul singur.
+    /// ShareX writes the outline color into the current tool's field, not a single one.
     fn border_mut(&mut self) -> &mut Color32 {
         match self.tool {
             Tool::TextBackground | Tool::SpeechBalloon => &mut self.opt.text_border,
@@ -2634,12 +2635,12 @@ impl Editor {
         }
     }
 
-    // ------------------------------------------------------------ tastatură
+    // ------------------------------------------------------------- keyboard
 
     fn keys(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         use egui::Key as K;
-        // dialogul e modal: cât e deschis, nicio scurtătură a editorului nu
-        // se declanșează, doar Enter (OK) și Esc (Renunță)
+        // the dialog is modal: while it is open no editor shortcut fires,
+        // only Enter (OK) and Esc (Cancel)
         if let Some(d) = &self.dialog {
             if d.kind == DlgKind::Text {
                 self.text_keys(ctx, acts);
@@ -2654,7 +2655,7 @@ impl Editor {
                 if i.key_pressed(K::Escape) {
                     acts.push(Act::DlgCancel);
                 }
-                // dacă tocmai se scrie într-un câmp, Enter e al câmpului
+                // if something is being typed into a field, Enter belongs to the field
                 if !typing && i.key_pressed(K::Enter) {
                     acts.push(Act::DlgOk);
                 }
@@ -2757,14 +2758,14 @@ impl Editor {
         }
     }
 
-    /// Tastatura ferestrei de text, exact ca în `TextDrawingInputBox`:
-    /// implicit Enter = OK și Ctrl+Enter = rând nou, iar butonul din stânga-jos
-    /// (`btnSwapEnterKey`, adică `Options.EnterKeyNewLine`) le schimbă între ele.
-    /// Esc = renunță. Rulează ÎNAINTEA construirii interfeței, deci scoate
-    /// evenimentele din coadă înainte să ajungă la `TextEdit`.
+    /// The text window's keyboard, exactly as in `TextDrawingInputBox`: by default
+    /// Enter = OK and Ctrl+Enter = new line, and the bottom-left button
+    /// (`btnSwapEnterKey`, that is `Options.EnterKeyNewLine`) swaps them.
+    /// Esc = cancel. It runs BEFORE the interface is built, so it takes the
+    /// events out of the queue before they reach `TextEdit`.
     fn text_keys(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         use egui::{Event, Key as K};
-        // cu `EnterKeyNewLine` pornit, tasta de OK e Ctrl+Enter, nu Enter
+        // with `EnterKeyNewLine` on, the OK key is Ctrl+Enter, not Enter
         let swap = self.dialog.as_ref().is_some_and(|d| d.text.opts.enter_new_line);
         let (mut ok, mut cancel) = (false, false);
         ctx.input_mut(|i| {
@@ -2774,8 +2775,8 @@ impl Editor {
                         ok = true;
                         false
                     } else {
-                        // rândul nou: îl trecem drept Enter simplu, ca TextEdit
-                        // să-l insereze chiar la poziția cursorului
+                        // the new line: we pass it through as a plain Enter, so TextEdit
+                        // inserts it right at the cursor position
                         *modifiers = egui::Modifiers::NONE;
                         true
                     }
@@ -2795,9 +2796,9 @@ impl Editor {
         }
     }
 
-    /// Tastatura ferestrei de stickere: Enter alege primul rezultat al
-    /// căutării, Esc renunță. Rulează ÎNAINTEA construirii interfeței, ca
-    /// tastele să nu ajungă în câmpul de căutare.
+    /// The sticker window's keyboard: Enter picks the first search result, Esc
+    /// cancels. It runs BEFORE the interface is built, so the keys do not end up
+    /// in the search field.
     fn sticker_keys(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
         use egui::{Event, Key as K};
         let (mut ok, mut cancel) = (false, false);
@@ -2826,8 +2827,8 @@ impl Editor {
     }
 
     fn pick(&mut self, t: Tool) {
-        // schimbarea uneltei renunță la forma activă; cât stai pe aceeași
-        // unealtă, forma abia trasă rămâne selectată, cu nodurile la vedere
+        // switching tools drops the active shape; while you stay on the same
+        // tool, the freshly drawn shape stays selected, with its nodes visible
         if t != self.tool {
             self.sel = None;
         }
@@ -2849,8 +2850,8 @@ impl Editor {
                 Act::Save => self.save(false),
                 Act::SaveAs => self.save(true),
                 Act::Upload => self.status = t(Msg::StUploadMissing).into(),
-                // Butonul rămâne pentru fidelitate față de bara din ShareX,
-                // dar tipărirea e în afara scopului lui sxr.
+                // The button stays for fidelity to the ShareX bar,
+                // but printing is out of scope for sxr.
                 Act::Print => self.status = t(Msg::StPrintMissing).into(),
                 Act::Undo => self.do_undo(),
                 Act::Redo => self.do_redo(),
@@ -2895,32 +2896,32 @@ impl Editor {
         }
     }
 
-    // ----------------------------------------------------------------- bară
+    // -------------------------------------------------------------- toolbar
 
     fn toolbar(&mut self, ui: &mut egui::Ui, icons: &Icons, acts: &mut Vec<Act>) {
         egui::ScrollArea::horizontal()
             .auto_shrink([false, true])
-            // fără bara de derulare: pe fereastră îngustă apărea ca o dungă albă
-            // chiar sub unelte, de fiecare dată când treceai cu mausul pe acolo.
-            // Bara se poate în continuare derula cu rotița mausului.
+            // no scroll bar: on a narrow window it showed up as a white stripe
+            // right under the tools, every time you moved the mouse over there.
+            // The bar can still be scrolled with the mouse wheel.
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.spacing_mut().button_padding = Vec2::new(5.0, 4.0);
-                    // În ShareX iconițele stau direct pe bară, fără casetă în
-                    // jur: rama și fundalul apar doar la trecerea mausului sau
-                    // pe unealta aleasă. Deci golim doar starea „inactiv".
+                    // In ShareX the icons sit directly on the bar, with no box
+                    // around them: the frame and the background appear only on hover
+                    // or on the chosen tool. So we only clear the "inactive" state.
                     let v = &mut ui.style_mut().visuals;
                     v.selection.bg_fill = SEL_BG;
                     let w = &mut v.widgets;
                     w.inactive.weak_bg_fill = Color32::TRANSPARENT;
                     w.inactive.bg_fill = Color32::TRANSPARENT;
                     w.inactive.bg_stroke = egui::Stroke::NONE;
-                    // Survolarea în ShareX e doar un fundal ceva mai deschis;
-                    // chenarul îl păstrăm pentru unealta activă, altfel cele
-                    // două stări ar arăta aproape la fel. Apăsarea adaugă
-                    // chenarul, în locul ramei albe pe care o dă egui.
+                    // Hover in ShareX is just a slightly lighter background; we
+                    // keep the border for the active tool, otherwise the two
+                    // states would look almost the same. Pressing adds the
+                    // border, in place of the white frame egui gives.
                     w.hovered.weak_bg_fill = HOVER_BG;
                     w.hovered.bg_fill = HOVER_BG;
                     w.hovered.bg_stroke = egui::Stroke::NONE;
@@ -2928,7 +2929,7 @@ impl Editor {
                     w.active.bg_fill = HOVER_BG;
                     w.active.bg_stroke = egui::Stroke::new(1.0, SEL_BORDER);
 
-                    // Bara stă centrată pe lățimea ferestrei, ca în ShareX.
+                    // The bar sits centered across the window width, as in ShareX.
                     let pad = ((ui.available_width() - self.bar_w) * 0.5).max(0.0);
                     if pad > 0.5 {
                         ui.add_space(pad);
@@ -2957,13 +2958,13 @@ impl Editor {
                     ui.add_space(4.0);
 
                     for t in Tool::ALL {
-                        // `Button::selected` ia fundalul din `selection.bg_fill`,
-                        // dar chenarul tot din starea widget-ului — pe care am
-                        // golit-o ca iconițele să rămână plate. Iar `Button::stroke`
-                        // ar umfla butonul cu 2px, fiindcă egui scade grosimea din
-                        // marginea interioară doar pentru conturul din stil. Deci
-                        // chenarul uneltei active îl desenăm noi, peste butonul gata
-                        // așezat: lățimea barei rămâne neatinsă.
+                        // `Button::selected` takes the background from
+                        // `selection.bg_fill`, but the border still from the widget
+                        // state — which we cleared so the icons stay flat. And
+                        // `Button::stroke` would inflate the button by 2px, because egui
+                        // subtracts the width from the inner margin only for the outline
+                        // from the style. So we draw the active tool's border ourselves,
+                        // over the button once it is laid out: the bar's width is untouched.
                         let on = self.tool == t;
                         let r = ui
                             .add(egui::Button::image(icons.img(t.icon())).selected(on))
@@ -2982,8 +2983,8 @@ impl Editor {
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // conturul are gaură în mijloc, umplerea și evidențierea nu —
-                    // exact cele trei iconițe din ShareX
+                    // the outline has a hole in the middle, the fill and the highlight
+                    // do not — exactly the three icons from ShareX
                     color_button(ui, "contur", self.border_mut(), 8.0, t(Msg::TipBorderColor));
                     color_button(ui, "umplere", self.fill_mut(), 0.0, t(Msg::TipFillColor));
                     color_button(
@@ -3005,8 +3006,8 @@ impl Editor {
                     self.bar_w = ui.cursor().min.x - x0;
                 });
             });
-        // bara de stare apare doar când are ceva de spus: un rând gol
-        // ar lăsa altfel un spațiu inutil sub imagine
+        // the status bar shows up only when it has something to say: an empty
+        // row would otherwise leave a useless gap under the image
         if !self.status.is_empty() {
             ui.vertical_centered(|ui| ui.small(self.status.clone()));
         }
@@ -3015,7 +3016,7 @@ impl Editor {
     fn menu_opts(&mut self, ui: &mut egui::Ui, icons: &Icons) {
         let o = &mut self.opt;
         let mut start = o.step_start;
-        // limba aleasă din meniu, aplicată după închiderea împrumutului pe `self`
+        // the language chosen from the menu, applied after the borrow on `self` ends
         let mut pick_lang = None;
         ui.menu_image_button(icons.img("layer--pencil"), |ui| {
             ui.set_min_width(240.0);
@@ -3029,8 +3030,8 @@ impl Editor {
             ui.add(egui::Slider::new(&mut o.step_font, 8.0..=72.0).text(t(Msg::SldStepFontSize)));
             ui.add(egui::Slider::new(&mut start, 1..=100).text(t(Msg::SldStepStart)));
             ui.checkbox(&mut o.shadow, t(Msg::ChkDropShadow));
-            // jos de tot, despărțit de restul: alegerea limbii se aplică pe loc
-            // și se scrie în fișierul de configurare
+            // right at the bottom, set apart from the rest: the language choice
+            // applies on the spot and is written to the configuration file
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label(t(Msg::LangSelector));
@@ -3110,29 +3111,29 @@ impl Editor {
         .on_hover_text(t(Msg::MenuImage));
     }
 
-    // ---------------------------------------------------------------- pânză
+    // --------------------------------------------------------------- canvas
 
     fn canvas(&mut self, ui: &mut egui::Ui) {
         let (iw, ih) = (self.img.width() as f32, self.img.height() as f32);
         let avail = ui.available_size();
         let zoom = (avail.x / iw).min(avail.y / ih).min(1.0).max(0.05);
         let size = Vec2::new(iw * zoom, ih * zoom);
-        // Alocăm tot spațiul rămas și centrăm imaginea în el: la redimensionarea
-        // ferestrei rămâne în mijloc, nu lipită de colțul stânga-sus.
+        // We allocate all the remaining space and center the image in it: on a
+        // window resize it stays in the middle, not stuck to the top-left corner.
         let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         let img_rect = Rect::from_center_size(resp.rect.center(), size);
         let origin = img_rect.min;
         let to_screen = move |p: Pos2| origin + p.to_vec2() * zoom;
-        // Cursorul e limitat la imagine, ca formele să nu ajungă în afara ei.
+        // The cursor is clamped to the image, so shapes cannot end up outside it.
         let to_img = move |p: Pos2| ((img_rect.clamp(p) - origin) / zoom).to_pos2();
         let tol = 6.0 / zoom;
-        // nodul se prinde pe toată caseta lui, ca în ShareX
+        // the node is grabbed over its whole box, as in ShareX
         let htol = NODE_HIT / 2.0 / zoom;
 
-        // Forma de sub cursor: ea primește chenarul animat, ca `CurrentHoverShape`.
+        // The shape under the cursor: it gets the animated border, like `CurrentHoverShape`.
         let hover = resp.hover_pos().and_then(|sp| self.shape_at(to_img(sp), tol));
-        // Peste un nod, cursorul devine mânuță deschisă; cât tragi de el, închisă
-        // (`SetHandCursor` din ShareX).
+        // Over a node the cursor becomes an open hand; while you drag it, closed
+        // (`SetHandCursor` from ShareX).
         let on_node = resp
             .hover_pos()
             .is_some_and(|sp| self.handle_at(to_img(sp), htol).is_some());
@@ -3150,21 +3151,21 @@ impl Editor {
         );
 
         if self.dialog.is_some() {
-            // dialogul modal ține pânza inactivă
+            // the modal dialog keeps the canvas inactive
         } else if self.tool == Tool::Select {
             self.select_input(&resp, to_img, tol, htol);
         } else {
-            // Ordinea de la apăsare e cea din `StartRegionSelection`: întâi
-            // nodurile formei active, apoi forma de sub cursor — care se
-            // selectează și începe să se miște, oricare ar fi unealta — și
-            // abia dacă acolo nu e nimic, se începe o formă nouă.
+            // The order on press is the one from `StartRegionSelection`: first
+            // the active shape's nodes, then the shape under the cursor — which
+            // gets selected and starts moving, whatever the tool — and only if
+            // there is nothing there is a new shape started.
             if resp.clicked() {
                 if let Some(p) = resp.interact_pointer_pos() {
                     let at = to_img(p);
                     if let Some(i) = self.shape_at(at, tol) {
                         self.sel = Some(i);
                     } else if matches!(self.tool, Tool::Step) || self.tool.is_text() {
-                        // contorul și casetele de text se plasează dintr-un clic
+                        // the step counter and the text boxes are placed with one click
                         self.draft = self.new_draft(at);
                         self.commit_draft();
                     } else if matches!(
@@ -3217,9 +3218,9 @@ impl Editor {
             }
         }
 
-        // reflectorul: un singur strat întunecat cu găuri pentru toate
-        // dreptunghiurile, la poziția primului reflector din listă (schița
-        // în curs de tragere intră și ea în reuniune)
+        // the spotlight: a single dark layer with holes for all the
+        // rectangles, at the position of the first spotlight in the list (the
+        // draft being dragged joins the union too)
         let mut spots = shape::spotlight_rects(&self.shapes);
         if let Some(Shape::Spotlight { rect }) = &self.draft {
             spots.push(Rect::from_two_pos(rect.min, rect.max));
@@ -3266,10 +3267,10 @@ impl Editor {
             }
         }
 
-        // Chenarul „furnicilor" din ShareX: o linie neagră continuă, peste ea
-        // liniuțe albe de 5 pe 5, cu decalajul mișcat cu 15 px/s
-        // (`borderDotPen.DashOffset = elapsed * -15`). Se vede DOAR cât ții
-        // mausul pe formă, nu tot timpul.
+        // ShareX's "marching ants" border: a solid black line, with white
+        // dashes of 5 on 5 over it, the offset moving at 15 px/s
+        // (`borderDotPen.DashOffset = elapsed * -15`). It shows ONLY while you
+        // hold the mouse over the shape, not all the time.
         if let Some(s) = hover.and_then(|i| self.shapes.get(i)) {
             let b = s.bounds();
             let r = Rect::from_two_pos(to_screen(b.min), to_screen(b.max)).expand(1.0);
@@ -3280,9 +3281,9 @@ impl Editor {
                 r.left_bottom(),
                 r.left_top(),
             ];
-            // decalajul se ține într-o singură perioadă (liniuță + spațiu = 10):
-            // dat brut, ar porni desenarea cu mult înaintea colțului și ar lăsa
-            // o dungă albă tot mai lungă spre stânga
+            // the offset is kept within a single period (dash + gap = 10): given
+            // raw, it would start drawing well before the corner and leave an
+            // ever longer white stripe to the left
             let t = (ui.ctx().input(|i| i.time) as f32 * -15.0).rem_euclid(10.0);
             painter.add(egui::Shape::line(pts.to_vec(), egui::Stroke::new(1.0, Color32::BLACK)));
             painter.extend(egui::Shape::dashed_line_with_offset(
@@ -3292,15 +3293,15 @@ impl Editor {
                 &[5.0],
                 t,
             ));
-            // liniuțele se mișcă, deci cerem cadre cât timp chenarul e vizibil
+            // the dashes move, so we ask for frames while the border is visible
             ui.ctx().request_repaint();
         }
 
         if let Some(i) = self.sel {
             if let Some(s) = self.shapes.get(i) {
-                // Toate formele au aceleași noduri: bulinele albe pline din
-                // `CircleNode.png`, nu pătrate — ShareX lipește aceeași imagine
-                // în toate colțurile, indiferent de unealtă.
+                // All shapes have the same nodes: the solid white dots from
+                // `CircleNode.png`, not squares — ShareX pastes the same image
+                // into every corner, whatever the tool.
                 for hp in s.handles() {
                     painter.circle_filled(to_screen(hp), NODE / 2.0, Color32::WHITE);
                 }
@@ -3308,7 +3309,7 @@ impl Editor {
         }
     }
 
-    /// Forma cea mai de sus aflată sub punctul dat, ca `GetIntersectShape`.
+    /// The topmost shape under the given point, like `GetIntersectShape`.
     fn shape_at(&self, p: Pos2, tol: f32) -> Option<usize> {
         self.shapes
             .iter()
@@ -3318,20 +3319,20 @@ impl Editor {
             .map(|(i, _)| i)
     }
 
-    /// Locul în care s-a apăsat butonul, nu locul în care a ajuns cursorul:
-    /// `drag_started` se aprinde abia după ce mausul s-a depărtat cu peste 6px
-    /// de apăsare, iar `interact_pointer_pos` dă poziția curentă. Fără asta,
-    /// nodurile scapă printre degete și orice formă pornește cu 6px mai încolo.
+    /// The place where the button was pressed, not where the cursor ended up:
+    /// `drag_started` only fires after the mouse has moved more than 6px from the
+    /// press, and `interact_pointer_pos` gives the current position. Without this,
+    /// the nodes slip through your fingers and every shape starts 6px further off.
     fn press_at(ctx: &egui::Context, resp: &egui::Response) -> Option<Pos2> {
         ctx.input(|i| i.pointer.press_origin())
             .or_else(|| resp.interact_pointer_pos())
     }
 
-    /// Indicele nodului formei selectate aflat sub punctul dat, dacă există.
+    /// The index of the selected shape's node under the given point, if there is one.
     fn handle_at(&self, p: Pos2, tol: f32) -> Option<usize> {
         let s = self.shapes.get(self.sel?)?;
-        // ShareX verifică `Rectangle.Contains`, adică toată caseta pătrată a
-        // nodului, nu un cerc — pe diagonală iartă cu vreo 40% mai mult
+        // ShareX checks `Rectangle.Contains`, that is the node's whole square
+        // box, not a circle — on the diagonal it forgives about 40% more
         s.handles()
             .iter()
             .position(|hp| Rect::from_center_size(*hp, Vec2::splat(tol * 2.0)).contains(p))
@@ -3344,7 +3345,7 @@ impl Editor {
         tol: f32,
         htol: f32,
     ) {
-        // dublu-clic pe o casetă de text o redeschide în editare
+        // a double click on a text box reopens it for editing
         if resp.double_clicked() {
             if let Some(sp) = resp.interact_pointer_pos() {
                 let p = to_img(sp);
@@ -3365,8 +3366,8 @@ impl Editor {
             if let Some(sp) = Self::press_at(&resp.ctx, resp) {
                 let p = to_img(sp);
                 let mut started = None;
-                // întâi handle-urile formei deja selectate, ca redimensionarea
-                // să aibă prioritate față de selectarea altei forme dedesubt
+                // first the handles of the already selected shape, so resizing
+                // takes priority over selecting another shape underneath
                 if let Some(i) = self.sel {
                     if let Some(s) = self.shapes.get(i) {
                         for (hi, hp) in s.handles().iter().enumerate() {
@@ -3415,7 +3416,7 @@ impl Editor {
         if resp.drag_stopped() {
             self.drag = None;
         }
-        // un clic simplu pe gol deselectează
+        // a plain click on empty space deselects
         if resp.clicked() {
             if let Some(sp) = resp.interact_pointer_pos() {
                 let p = to_img(sp);
@@ -3435,13 +3436,13 @@ fn rgba(c: Color32) -> image::Rgba<u8> {
     image::Rgba([c.r(), c.g(), c.b(), c.a()])
 }
 
-/// Rescalare cu Lanczos3, ca în ShareX.
+/// Rescaling with Lanczos3, as in ShareX.
 pub fn resize_img(img: &RgbaImage, w: u32, h: u32) -> RgbaImage {
     image::imageops::resize(img, w.max(1), h.max(1), image::imageops::FilterType::Lanczos3)
 }
 
-/// Pânză nouă de `w`x`h`, umplută cu `fill`, cu imaginea veche așezată
-/// centrat. Dacă pânza e mai mică, imaginea se taie simetric.
+/// A new `w`x`h` canvas, filled with `fill`, with the old image placed in the
+/// center. If the canvas is smaller, the image is cut symmetrically.
 pub fn canvas_img(img: &RgbaImage, w: u32, h: u32, fill: Color32) -> RgbaImage {
     let (w, h) = (w.max(1), h.max(1));
     let mut out = RgbaImage::from_pixel(w, h, rgba(fill));
@@ -3463,9 +3464,9 @@ pub fn canvas_img(img: &RgbaImage, w: u32, h: u32, fill: Color32) -> RgbaImage {
     out
 }
 
-/// Dreptunghiul rămas după tăierea marginilor uniforme, luând ca reper pixelul
-/// din colțul stânga-sus și o toleranță de 10 pe canal. `None` dacă nu e nimic
-/// de tăiat (sau dacă toată imaginea e uniformă).
+/// The rectangle left after trimming the uniform edges, taking the top-left
+/// corner pixel as reference and a tolerance of 10 per channel. `None` if there
+/// is nothing to trim (or if the whole image is uniform).
 pub fn auto_crop_rect(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
     const TOL: i32 = 10;
     let (w, h) = img.dimensions();
@@ -3489,11 +3490,11 @@ pub fn auto_crop_rect(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
     Some((left, top, right - left + 1, bottom - top + 1))
 }
 
-/// Scoate o fâșie din imagine și lipește cele două jumătăți rămase. Fâșia e
-/// orizontală (scade înălțimea) dacă dreptunghiul e mai lat decât înalt,
-/// altfel verticală. Întoarce imaginea nouă, orientarea, unde se termina fâșia
-/// în coordonatele vechi și grosimea ei; `None` dacă fâșia e prea subțire sau
-/// ar înghiți toată imaginea.
+/// Takes a band out of the image and glues the two remaining halves together.
+/// The band is horizontal (it shrinks the height) if the rectangle is wider
+/// than tall, otherwise vertical. Returns the new image, the orientation, where
+/// the band ended in the old coordinates and its thickness; `None` if the band
+/// is too thin or would swallow the whole image.
 pub fn cut_out(img: &RgbaImage, r: Rect) -> Option<(RgbaImage, bool, f32, f32)> {
     let (w, h) = img.dimensions();
     let clip = Rect::from_min_max(Pos2::ZERO, Pos2::new(w as f32, h as f32));
@@ -3541,11 +3542,11 @@ impl eframe::App for Editor {
         let ctx = ui.ctx().clone();
         let icons = self.icons.clone();
         let mut acts: Vec<Act> = Vec::new();
-        // fonturile trimise la cadrul trecut sunt acum instalate în egui
+        // the fonts sent last frame are now installed in egui
         font::sync();
 
-        // captura cerută la cadrul anterior: acum minimizarea a ajuns deja
-        // la compozitor, deci fereastra noastră nu mai intră în poză
+        // the capture requested on the previous frame: the minimize has now
+        // reached the compositor, so our window no longer shows up in the picture
         self.run_pending(&ctx);
 
         self.keys(&ctx, &mut acts);

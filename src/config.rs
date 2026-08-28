@@ -1,26 +1,25 @@
-//! Fișierul de configurare al aplicației: `$XDG_CONFIG_HOME/sxr/config`,
-//! implicit `~/.config/sxr/config`.
+//! The application's config file: `$XDG_CONFIG_HOME/sxr/config`, by default
+//! `~/.config/sxr/config`.
 //!
-//! Format deliberat minimal — `cheie=valoare`, câte una pe linie, cu `#` pentru
-//! comentarii — ca să nu avem nevoie de nicio dependență de TOML sau JSON.
-//! Modulul nu știe nimic despre ce chei există: e un simplu magazin de perechi,
-//! gândit ca meniul de setări care urmează să-și adauge propriile chei fără să
-//! atingă nimic de aici.
+//! Deliberately minimal format — `key=value`, one per line, with `#` for
+//! comments — so that we need no TOML or JSON dependency at all. The module
+//! knows nothing about which keys exist: it is a plain store of pairs, meant so
+//! that the settings menu still to come can add its own keys without touching
+//! anything in here.
 //!
-//! Nimic din acest modul nu intră vreodată în panică: un fișier lipsă, ilizibil
-//! sau stricat înseamnă pur și simplu „nicio valoare", deci apelantul rămâne cu
-//! implicitele lui.
+//! Nothing in this module ever panics: a missing, unreadable or broken file
+//! simply means "no value", so the caller is left with its own defaults.
 
 use std::path::PathBuf;
 
-/// Directorul personal, cu rezervă la directorul temporar dacă `HOME` lipsește.
+/// The home directory, falling back to the temporary one if `HOME` is missing.
 pub fn home() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
 }
 
-/// `$XDG_CONFIG_HOME/sxr`, implicit `~/.config/sxr`.
+/// `$XDG_CONFIG_HOME/sxr`, by default `~/.config/sxr`.
 pub fn dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -29,30 +28,30 @@ pub fn dir() -> PathBuf {
         .join("sxr")
 }
 
-/// Calea completă a fișierului de configurare.
+/// The full path of the config file.
 pub fn path() -> PathBuf {
     dir().join("config")
 }
 
-/// Perechile citite din fișier, în ordinea în care apar acolo. Ordinea contează
-/// doar ca fișierul rescris să semene cu cel citit; căutarea e liniară, dar
-/// setările se numără pe degete.
+/// The pairs read from the file, in the order they appear there. The order only
+/// matters so the rewritten file resembles the one we read; the lookup is
+/// linear, but the settings can be counted on one hand.
 #[derive(Default)]
 pub struct Config {
     items: Vec<(String, String)>,
 }
 
 impl Config {
-    /// Citește fișierul. Orice eroare (lipsă, drepturi, octeți invalizi) dă o
-    /// configurare goală, deci apelantul primește implicitele.
+    /// Reads the file. Any error (missing, permissions, invalid bytes) yields an
+    /// empty config, so the caller gets the defaults.
     pub fn load() -> Self {
         let Ok(raw) = std::fs::read(path()) else { return Self::default() };
         let text = String::from_utf8_lossy(&raw);
         let mut items = Vec::new();
         for line in text.lines() {
             let line = line.trim();
-            // liniile goale și comentariile nu spun nimic; o linie fără `=` e
-            // stricată și o sărim, fără să ratăm restul fișierului
+            // blank lines and comments say nothing; a line without `=` is
+            // broken and we skip it, without losing the rest of the file
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
@@ -71,7 +70,7 @@ impl Config {
         self.items.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
     }
 
-    /// Schimbă valoarea unei chei, sau o adaugă la sfârșit dacă lipsea.
+    /// Changes a key's value, or appends it at the end if it was missing.
     pub fn set(&mut self, key: &str, val: &str) {
         match self.items.iter_mut().find(|(k, _)| k == key) {
             Some((_, v)) => *v = val.to_owned(),
@@ -79,7 +78,7 @@ impl Config {
         }
     }
 
-    /// Scrie fișierul, creând directorul dacă lipsește.
+    /// Writes the file, creating the directory if it is missing.
     pub fn save(&self) -> std::io::Result<()> {
         let mut out = String::from("# sxr\n");
         for (k, v) in &self.items {
@@ -93,13 +92,13 @@ impl Config {
     }
 }
 
-/// Valoarea unei chei, citită direct din fișier.
+/// A key's value, read straight from the file.
 pub fn get(key: &str) -> Option<String> {
     Config::load().get(key).map(str::to_owned)
 }
 
-/// Scrie o cheie, păstrând restul fișierului. `false` dacă scrierea a eșuat —
-/// apelantul decide dacă are ce spune despre asta; aplicația merge mai departe.
+/// Writes a key, keeping the rest of the file. `false` if the write failed —
+/// the caller decides whether that is worth saying; the app carries on either way.
 pub fn set(key: &str, val: &str) -> bool {
     let mut c = Config::load();
     c.set(key, val);

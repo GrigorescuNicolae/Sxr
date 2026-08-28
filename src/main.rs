@@ -18,11 +18,11 @@ fn main() {
 use anyhow::Context as _;
 
 fn real_main() -> anyhow::Result<()> {
-    // limba salvata, inainte de orice text vazut de om
+    // the saved language, before any text a human gets to see
     i18n::init();
     let arg = std::env::args().nth(1);
 
-    // moduri interne, nu apar in --help
+    // internal modes, they do not show up in --help
     if arg.as_deref() == Some(clip::SERVE_FLAG) {
         return clip::serve_from_stdin();
     }
@@ -95,8 +95,8 @@ fn real_main() -> anyhow::Result<()> {
         return app::toolbar_shot(&out);
     }
     if arg.as_deref() == Some("--i18n-check") {
-        // cu un cod de limba in plus, modul si scrie alegerea in fisierul de
-        // configurare: asa se poate verifica persistenta fara interfata
+        // with an extra language code the mode also writes the choice to the
+        // config file: that way persistence can be checked without the interface
         if let Some(code) = std::env::args().nth(2) {
             let l = i18n::Lang::from_code(&code)
                 .with_context(|| format!("limba necunoscuta: {code}"))?;
@@ -126,7 +126,7 @@ fn real_main() -> anyhow::Result<()> {
             .to_rgba8(),
         None => {
             let img = capture::select_region()?;
-            // auto-copy imediat: daca inchizi fara sa editezi, captura e deja in clipboard
+            // auto-copy at once: close without editing and the capture is already there
             match render::compose(&img, &[]).and_then(clip::copy_png) {
                 Ok(()) => {}
                 Err(e) => eprintln!("sxr: {}", i18n::auto_copy_failed(&format!("{e:#}"))),
@@ -137,12 +137,7 @@ fn real_main() -> anyhow::Result<()> {
     app::run(img)
 }
 
-/// Mod ascuns de verificare: construieste cate o forma din fiecare varianta
-/// peste o imagine generata si scrie PNG-ul rezultat. Neinteractiv, fara fereastra.
-/// Randează numărătorul pentru mai multe valori, pe fundal alb, ca să se poată
-/// măsura programatic spațiul dintre cifră și marginea cercului.
-/// Săgeți la mai multe grosimi, pe fundal alb, ca să se poată măsura capul.
-
+/// Arrows at several widths, on a white background, so the head can be measured.
 fn arrow_test(path: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2};
     use shape::Shape;
@@ -170,6 +165,8 @@ fn arrow_test(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Renders the step counter for several values, on a white background, so the
+/// gap between the digit and the edge of the circle can be measured in code.
 fn step_test(path: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2};
     use shape::Shape;
@@ -202,6 +199,8 @@ fn step_test(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Hidden check mode: builds one shape of every variant over a generated image
+/// and writes the resulting PNG. Non-interactive, no window.
 fn render_test(path: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2, Rect};
     use shape::Shape;
@@ -210,22 +209,23 @@ fn render_test(path: &str) -> anyhow::Result<()> {
     let (w, h) = (800u32, 600u32);
     let mut img = image::RgbaImage::new(w, h);
     for (x, y, px) in img.enumerate_pixels_mut() {
-        // degrade + tabla de sah pe toate canalele: asa exista si detaliu de
-        // frecventa inalta, nu doar gradient, ca pixelarea, estomparea si
-        // evidentierea sa aiba ce amesteca. Gradientele stau sub 160 ca sa
-        // ramana loc pentru tabla de sah fara saturare.
+        // gradient + checkerboard on every channel: that way there is
+        // high-frequency detail too, not just a gradient, so pixelation, blurring
+        // and highlighting have something to mix. The gradients stay below 160 so
+        // there is room left for the checkerboard without saturating.
         let chk = if ((x / 20) + (y / 20)) % 2 == 0 { 70 } else { 0 };
         let mix = |v: u32| (v + chk).min(255) as u8;
         px.0 = [mix(x * 160 / w), mix(y * 160 / h), mix(60), 255];
     }
 
-    // Cursorul: îl punem mărit de 4 ori (16x24 -> 64x96) ca să se vadă și
-    // scalarea, și că zonele transparente rămân transparente. Stă în gaura
-    // reflectorului, unde fundalul e neatins, ca verificarea alfa să fie curată.
+    // The cursor: we put it scaled 4x (16x24 -> 64x96) so that both the scaling
+    // shows and that transparent areas stay transparent. It sits in the hole of
+    // the spotlight, where the background is untouched, to keep the alpha check
+    // clean.
     let cursor = image::load_from_memory(include_bytes!("../assets/cursor.png"))
         .context("cursor.png")?
         .to_rgba8();
-    // context fără fereastră: `load_texture` lucrează doar pe CPU, deci merge
+    // window-less context: `load_texture` works on the CPU only, so it is fine
     let ctx = eframe::egui::Context::default();
     let cursor_tex = ctx.load_texture(
         "cursor",
@@ -238,10 +238,10 @@ fn render_test(path: &str) -> anyhow::Result<()> {
 
     let red = shape::PRIMARY;
     let white = shape::SECONDARY;
-    // guma isi ia culoarea din inelul din jurul dreptunghiului, o singura data
+    // the eraser takes its color from the ring around the rectangle, just once
     let erase_rect = Rect::from_min_max(Pos2::new(240.0, 440.0), Pos2::new(420.0, 580.0));
     let shapes = vec![
-        // reflectorul primul: stratul intunecat ramane sub restul formelor
+        // the spotlight first: the darkened layer stays under the other shapes
         Shape::Spotlight {
             rect: Rect::from_min_max(Pos2::new(460.0, 150.0), Pos2::new(770.0, 250.0)),
         },
@@ -303,7 +303,7 @@ fn render_test(path: &str) -> anyhow::Result<()> {
             outline_w: 0.0,
             radius: 3.0,
         },
-        // lupa peste zona cu tabla de sah si degrade, ca maritura sa se vada
+        // the magnifier over the checkerboard-and-gradient area, so the zoom shows
         Shape::Magnify {
             rect: Rect::from_min_max(Pos2::new(250.0, 160.0), Pos2::new(450.0, 250.0)),
             strength: 200.0,
@@ -340,7 +340,7 @@ fn render_test(path: &str) -> anyhow::Result<()> {
             img: Arc::new(cursor),
             tex: cursor_tex,
         },
-        // balonul ultimul: sta deasupra pixelarii, cu coada in jos
+        // the balloon last: it sits above the pixelation, tail pointing down
         Shape::Balloon {
             rect: Rect::from_min_max(Pos2::new(470.0, 370.0), Pos2::new(700.0, 430.0)),
             tail: Pos2::new(470.0, 460.0),
@@ -359,13 +359,13 @@ fn render_test(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Mod ascuns de verificare pentru dreptunghiurile trase invers: construieste
-/// fiecare forma bazata pe dreptunghi de doua ori peste acelasi fundal — o data
-/// cu `min`/`max` in ordine normala si o data inversate, exact ce lasa in urma o
-/// tragere de la dreapta la stanga — apoi scrie cate un PNG pentru fiecare.
-/// Cele doua trebuie sa iasa pixel cu pixel identice. Tot aici numaram si cate
-/// primitive scoate calea de previzualizare (`Shape::draw`) in fiecare caz:
-/// preview-ul si exportul trebuie sa se comporte la fel.
+/// Hidden check mode for rectangles dragged backwards: builds every
+/// rectangle-based shape twice over the same background — once with `min`/`max`
+/// in the normal order and once swapped, exactly what a right-to-left drag
+/// leaves behind — then writes one PNG for each. The two must come out pixel for
+/// pixel identical. Here we also count how many primitives the preview path
+/// (`Shape::draw`) emits in each case: the preview and the export have to behave
+/// the same.
 fn flip_test(dir: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2, Rect};
     use shape::Shape;
@@ -382,7 +382,7 @@ fn flip_test(dir: &str) -> anyhow::Result<()> {
     let cursor = image::load_from_memory(include_bytes!("../assets/cursor.png"))
         .context("cursor.png")?
         .to_rgba8();
-    // context fara fereastra: layout-ul si texturile lucreaza doar pe CPU
+    // window-less context: layout and textures work on the CPU only
     let ctx = eframe::egui::Context::default();
     font::install(&ctx);
     let cursor_tex = ctx.load_texture(
@@ -399,7 +399,7 @@ fn flip_test(dir: &str) -> anyhow::Result<()> {
     let white = shape::SECONDARY;
     let (a, b) = (Pos2::new(60.0, 50.0), Pos2::new(260.0, 190.0));
 
-    // acelasi dreptunghi, o data normal si o data cu colturile schimbate intre ele
+    // the same rectangle, once normal and once with the corners swapped over
     let build = |r: Rect| -> Vec<(&'static str, Shape)> {
         vec![
             ("rect", Shape::Rect { rect: r, border: red, fill: Color32::TRANSPARENT, width: 4.0, radius: 3.0 }),
@@ -456,8 +456,8 @@ fn flip_test(dir: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Cate primitive de desen scoate calea de previzualizare pentru o forma.
-/// Rulam de doua ori: primul cadru doar aseaza fonturile si layout-ul.
+/// How many drawing primitives the preview path emits for one shape.
+/// We run it twice: the first frame only settles the fonts and the layout.
 fn preview_count(ctx: &eframe::egui::Context, img: &image::RgbaImage, s: &shape::Shape) -> usize {
     let mut n = 0;
     for _ in 0..2 {
@@ -470,8 +470,8 @@ fn preview_count(ctx: &eframe::egui::Context, img: &image::RgbaImage, s: &shape:
     n
 }
 
-/// Mod ascuns de verificare pentru taierea de fasie: o taietura orizontala
-/// si una verticala peste imaginea data, apoi scrie rezultatul.
+/// Hidden check mode for the cut-out band: one horizontal and one vertical cut
+/// over the given image, then it writes the result.
 fn cutout_test(src: &str, dst: &str) -> anyhow::Result<()> {
     use eframe::egui::{Pos2, Rect};
 
@@ -481,7 +481,7 @@ fn cutout_test(src: &str, dst: &str) -> anyhow::Result<()> {
     let (w0, h0) = img.dimensions();
     println!("intrare {w0}x{h0}");
 
-    // fasie orizontala: mai lata decat inalta, deci scade inaltimea
+    // horizontal band: wider than it is tall, so the height shrinks
     let hr = Rect::from_min_max(
         Pos2::new(10.0, 100.0),
         Pos2::new(w0 as f32 - 10.0, 140.0),
@@ -489,7 +489,7 @@ fn cutout_test(src: &str, dst: &str) -> anyhow::Result<()> {
     let (img, horiz, end, band) = app::cut_out(&img, hr).context("taietura orizontala esuata")?;
     println!("orizontala={horiz} grosime={band} sfarsit={end} -> {}x{}", img.width(), img.height());
 
-    // fasie verticala: mai inalta decat lata, deci scade latimea
+    // vertical band: taller than it is wide, so the width shrinks
     let vr = Rect::from_min_max(
         Pos2::new(60.0, 5.0),
         Pos2::new(85.0, img.height() as f32 - 5.0),
@@ -502,9 +502,9 @@ fn cutout_test(src: &str, dst: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Mod ascuns de verificare pentru operatiile din meniul „Imagine": ruleaza pe
-/// rand rotirile, decuparea automata, injumatatirea si marirea panzei, scriind
-/// cate un PNG in directorul dat. Neinteractiv, fara fereastra.
+/// Hidden check mode for the operations in the "Image" menu: runs the rotations,
+/// the auto crop, the halving and the canvas enlargement in turn, writing one PNG
+/// each into the given directory. Non-interactive, no window.
 fn img_test(src: &str, dir: &str) -> anyhow::Result<()> {
     use eframe::egui::Color32;
 
@@ -539,12 +539,9 @@ fn img_test(src: &str, dir: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Mod ascuns de verificare a textului: aceeași propoziție randată în toate
-/// combinațiile de stil și aliniere, o dată cu DejaVu Sans și o dată cu prima
-/// familie de sistem găsită, ca să se vadă că fontul chiar s-a încărcat.
-/// Mod ascuns pentru liniile și săgețile curbate: aceleași capete, o dată
-/// drept și o dată cu nodul din mijloc tras în sus, pe fundal alb, ca
-/// diferențele să se poată măsura programatic.
+/// Hidden mode for curved lines and arrows: the same endpoints, once straight
+/// and once with the middle node dragged upwards, on a white background, so the
+/// differences can be measured in code.
 fn curve_test(dir: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2};
     use shape::Shape;
@@ -561,8 +558,8 @@ fn curve_test(dir: &str) -> anyhow::Result<()> {
     let nod = Pos2::new(250.0, 50.0);
     let lat = 6.0f32;
 
-    // linia dreaptă are și ea un nod de mijloc, doar că neatins: se așază
-    // singur pe coardă, exact ca `AutoPositionCenterPoints` din ShareX
+    // the straight line has a middle node too, only untouched: it places itself
+    // on the chord, exactly like `AutoPositionCenterPoints` in ShareX
     let mut drept = vec![Pos2::ZERO];
     shape::auto_mid(from, to, &mut drept, false);
     println!("nod auto pe linia dreapta: ({:.1}, {:.1})", drept[0].x, drept[0].y);
@@ -578,7 +575,7 @@ fn curve_test(dir: &str) -> anyhow::Result<()> {
 
     let linie = |mid: Vec<Pos2>, curbat: bool| Shape::Line { from, to, mid, curbat, color: red, width: lat };
     let sageata = |mid: Vec<Pos2>, curbat: bool| Shape::Arrow { from, to, mid, curbat, color: red, width: lat };
-    // trei noduri de curbură, trase alternativ sus și jos
+    // three curvature nodes, dragged up and down in turn
     let trei = vec![Pos2::new(155.0, 60.0), Pos2::new(250.0, 195.0), Pos2::new(345.0, 60.0)];
 
     save("linie-dreapta.png", linie(drept.clone(), false))?;
@@ -587,7 +584,7 @@ fn curve_test(dir: &str) -> anyhow::Result<()> {
     save("sageata-curbata.png", sageata(vec![nod], true))?;
     save("curba-3.png", linie(trei.clone(), true))?;
 
-    // cifrele geometrice, ca scriptul de verificare sa aiba cu ce compara
+    // the geometry figures, so the check script has something to compare against
     let lung = |p: &[Pos2]| -> f32 { p.windows(2).map(|w| w[0].distance(w[1])).sum() };
     let po_d = shape::curve_poly(from, to, &drept, false);
     let po_c = shape::curve_poly(from, to, &[nod], true);
@@ -598,7 +595,7 @@ fn curve_test(dir: &str) -> anyhow::Result<()> {
         lung(&po_c),
         lung(&po_3)
     );
-    // cat de aproape trece curba de nodul tras (ar trebui sa fie zero)
+    // how close the curve passes to the dragged node (it should be zero)
     let apropiere = po_c
         .iter()
         .map(|q| q.distance(nod))
@@ -628,6 +625,9 @@ fn curve_test(dir: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Hidden check mode for text: the same sentence rendered in every combination
+/// of style and alignment, once with DejaVu Sans and once with the first system
+/// family found, so that we can see the font really did load.
 fn text_test(dir: &str) -> anyhow::Result<()> {
     use eframe::egui::{Color32, Pos2, Rect};
     use shape::{Align, Shape, TextOpts};
@@ -635,7 +635,7 @@ fn text_test(dir: &str) -> anyhow::Result<()> {
     let dir = std::path::Path::new(dir);
     std::fs::create_dir_all(dir)?;
 
-    // fundal negru: cerneala e albă, deci se numără ușor pixelii aprinși
+    // black background: the ink is white, so the lit pixels are easy to count
     let mut img = image::RgbaImage::new(420, 200);
     for px in img.pixels_mut() {
         px.0 = [0, 0, 0, 255];
@@ -643,7 +643,7 @@ fn text_test(dir: &str) -> anyhow::Result<()> {
     let rect = Rect::from_min_max(Pos2::new(10.0, 10.0), Pos2::new(410.0, 190.0));
     let txt = "Ana are mere";
 
-    // prima familie de sistem diferită de implicita, ca să se compare cu ea
+    // the first system family other than the default, so we have something to compare
     let alt = font::families()
         .into_iter()
         .find(|f| *f != font::DEFAULT_FAMILY)
@@ -668,8 +668,8 @@ fn text_test(dir: &str) -> anyhow::Result<()> {
         Ok(())
     };
 
-    // baza: familia de sistem, 28 px, aliniere stânga-sus, ca diferențele
-    // de stil să nu fie amestecate cu cele de așezare
+    // the baseline: system family, 28 px, top-left alignment, so the style
+    // differences do not get mixed up with the placement ones
     let base = TextOpts {
         family: alt.clone(),
         size: 28.0,
@@ -683,7 +683,7 @@ fn text_test(dir: &str) -> anyhow::Result<()> {
     save("italic.png", &TextOpts { italic: true, ..base.clone() })?;
     save("subliniat.png", &TextOpts { underline: true, ..base.clone() })?;
 
-    // alinierile, fiecare pe axa ei
+    // the alignments, each on its own axis
     for (n, a) in [("stanga", Align::Near), ("centru", Align::Center), ("dreapta", Align::Far)] {
         save(&format!("h-{n}.png"), &TextOpts { halign: a, ..base.clone() })?;
     }
@@ -691,7 +691,7 @@ fn text_test(dir: &str) -> anyhow::Result<()> {
         save(&format!("v-{n}.png"), &TextOpts { valign: a, ..base.clone() })?;
     }
 
-    // aceeași propoziție cu fontul implicit: imaginea trebuie să difere
+    // the same sentence with the default font: the image has to differ
     save("dejavu.png", &TextOpts { family: font::DEFAULT_FAMILY.into(), ..base.clone() })?;
     Ok(())
 }

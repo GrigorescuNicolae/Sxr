@@ -9,20 +9,20 @@ use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Vec2};
 
 use crate::i18n::{self, Msg, t};
 
-/// Același fișier de font e folosit și de egui (preview) și de rasterizatorul
-/// nostru CPU (export), ca textul să iasă identic în ambele.
+/// The same font file is used by both egui (preview) and our own CPU
+/// rasterizer (export), so the text comes out identical in both.
 pub const REGULAR: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 pub const BOLD: &[u8] = include_bytes!("../assets/DejaVuSans-Bold.ttf");
 
-/// Familia implicită și rezerva pentru orice familie care nu se poate încărca.
+/// The default family, and the fallback for any family that cannot be loaded.
 pub const DEFAULT_FAMILY: &str = "DejaVu Sans";
 
 const FAM: &str = "sxr";
 const FAM_BOLD: &str = "sxr-bold";
 
-// ------------------------------------------------------------- opțiuni text
+// ------------------------------------------------------------- text options
 
-/// Alinierea textului în casetă (ShareX: `StringAlignment`).
+/// Text alignment inside the box (ShareX: `StringAlignment`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Align {
     Near,
@@ -31,7 +31,7 @@ pub enum Align {
 }
 
 impl Align {
-    /// Cele trei valori, în ordinea din meniurile ShareX.
+    /// The three values, in the order they appear in ShareX's menus.
     pub const ALL: [Align; 3] = [Align::Near, Align::Center, Align::Far];
 
     pub fn horiz_name(self) -> &'static str {
@@ -51,8 +51,8 @@ impl Align {
     }
 }
 
-/// Copia noastră după `TextDrawingOptions.cs`: tot ce se poate schimba din
-/// fereastra de introducere a textului. Fără degrade — sxr nu îl desenează.
+/// Our copy of `TextDrawingOptions.cs`: everything that can be changed from
+/// the text input window. No gradient — sxr does not draw it.
 #[derive(Clone, PartialEq)]
 pub struct TextOpts {
     pub family: String,
@@ -63,9 +63,9 @@ pub struct TextOpts {
     pub underline: bool,
     pub halign: Align,
     pub valign: Align,
-    /// `TextDrawingOptions.EnterKeyNewLine`: cu ea pornită, în fereastra de
-    /// text Enter face rând nou și Ctrl+Enter dă OK; oprită, e invers.
-    /// Butonul din stânga-jos al ferestrei o comută.
+    /// `TextDrawingOptions.EnterKeyNewLine`: when on, Enter starts a new line
+    /// in the text window and Ctrl+Enter confirms; when off, it is the other way
+    /// around. The button in the window's bottom-left corner toggles it.
     pub enter_new_line: bool,
 }
 
@@ -85,7 +85,7 @@ impl Default for TextOpts {
     }
 }
 
-// ---------------------------------------------------- lista fonturilor din sistem
+// --------------------------------------------------------------- system font list
 
 struct Entry {
     family: String,
@@ -96,19 +96,19 @@ struct Entry {
 struct Db {
     families: Vec<String>,
     entries: Vec<Entry>,
-    /// Motivul pentru care lista a rămas goală, dacă e cazul.
+    /// Why the list ended up empty, if that is the case.
     note: Option<String>,
 }
 
-/// Enumerarea se face o singură dată pe sesiune, la prima cerere (deschiderea
-/// ferestrei de text), nu la fiecare cadru.
+/// The enumeration runs once per session, on the first request (opening the
+/// text window), not on every frame.
 fn db() -> &'static Db {
     static D: OnceLock<Db> = OnceLock::new();
     D.get_or_init(scan)
 }
 
-/// Extensiile pe care `ab_glyph` le poate deschide. Restul (pcf, bdf, pfb...)
-/// sunt fonturi bitmap sau Type1 și nu au ce căuta în listă.
+/// The extensions `ab_glyph` can open. The rest (pcf, bdf, pfb...) are bitmap
+/// or Type1 fonts and have no business being in the list.
 fn usable_file(p: &str) -> bool {
     let p = p.to_ascii_lowercase();
     p.ends_with(".ttf") || p.ends_with(".otf") || p.ends_with(".ttc") || p.ends_with(".otc")
@@ -134,7 +134,7 @@ fn scan() -> Db {
     let text = String::from_utf8_lossy(&out);
     let mut fams = BTreeSet::new();
     for line in text.lines() {
-        // format: „/cale/fisier.ttf: Familie1,Familie2:style=Stil1,Stil2"
+        // format: "/path/file.ttf: Family1,Family2:style=Style1,Style2"
         let mut it = line.splitn(3, ':');
         let Some(file) = it.next().map(str::trim) else { continue };
         if file.is_empty() || !usable_file(file) {
@@ -149,8 +149,8 @@ fn scan() -> Db {
             .unwrap_or("");
         let sl: Vec<&str> = styles.split(',').map(str::trim).collect();
         for (i, name) in names.split(',').map(str::trim).enumerate() {
-            // fontconfig scapă unele caractere cu backslash; niciun nume de
-            // familie nu conține așa ceva, deci le scoatem pur și simplu
+            // fontconfig escapes some characters with a backslash; no family
+            // name contains one, so we simply strip them
             let fam = name.replace('\\', "");
             if fam.is_empty() {
                 continue;
@@ -169,32 +169,32 @@ fn scan() -> Db {
 }
 
 thread_local! {
-    /// Fețele deja citite de pe disc, ca să nu recitim fișierul la fiecare cadru.
+    /// Faces already read from disk, so we do not reread the file every frame.
     static CACHE: RefCell<BTreeMap<(String, bool, bool), Face>> = RefCell::new(BTreeMap::new());
-    /// Fonturile pregătite pentru egui: nume de familie -> datele fișierului.
+    /// Fonts prepared for egui: family name -> file data.
     static REG: RefCell<BTreeMap<String, Arc<egui::FontData>>> = RefCell::new(BTreeMap::new());
-    /// Numele deja trimise lui egui prin `set_fonts`. Doar acestea pot fi
-    /// folosite într-un `FontId`, altfel egui nu găsește familia.
+    /// The names already handed to egui through `set_fonts`. Only these can be
+    /// used in a `FontId`; otherwise egui cannot find the family.
     static LIVE: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
-    /// Familii trimise la `set_fonts`, dar încă neaplicate: egui reface atlasul
-    /// abia la începutul cadrului următor, iar o cerere de font necunoscut
-    /// ar arunca panică. Trec în `LIVE` de-abia atunci, prin `sync`.
+    /// Families sent to `set_fonts` but not applied yet: egui rebuilds the
+    /// atlas only at the start of the next frame, and a request for an unknown
+    /// font would panic. They move into `LIVE` only then, through `sync`.
     static PEND: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
-    /// Familiile care s-au dovedit imposibil de încărcat; ies din listă.
+    /// The families that turned out impossible to load; they drop off the list.
     static BAD: RefCell<BTreeSet<String>> = RefCell::new(BTreeSet::new());
-    /// Mesaje pentru bara de stare, culese de editor după fiecare încărcare.
+    /// Messages for the status bar, collected by the editor after each load.
     static NOTES: RefCell<Vec<String>> = RefCell::new(Vec::new());
 }
 
 #[derive(Clone)]
 struct Face {
     font: Rc<FontVec>,
-    /// Numele familiei sub care e (sau va fi) înregistrat fontul în egui.
+    /// The family name the font is (or will be) registered under in egui.
     egui: String,
 }
 
-/// Familiile din sistem, fără cele care s-au dovedit imposibil de încărcat.
-/// Lista e goală (doar DejaVu) dacă `fc-list` lipsește.
+/// The system families, minus the ones that turned out impossible to load.
+/// The list is empty (DejaVu only) if `fc-list` is missing.
 pub fn families() -> Vec<&'static str> {
     if let Some(n) = db().note.as_deref() {
         note(n.to_owned());
@@ -213,8 +213,8 @@ pub fn families() -> Vec<&'static str> {
     })
 }
 
-/// Golește mesajele adunate de la ultima chemare (familii care n-au putut fi
-/// încărcate, variante lipsă). Editorul le pune în bara de stare.
+/// Drains the messages gathered since the last call (families that could not
+/// be loaded, missing variants). The editor puts them in the status bar.
 pub fn take_note() -> Option<String> {
     NOTES.with_borrow_mut(|n| {
         let m = n.first().cloned();
@@ -231,9 +231,9 @@ fn note(msg: String) {
     });
 }
 
-/// Cât de bine se potrivește un stil din `fc-list` cu ce s-a cerut.
-/// Mai mare = mai bine; stilurile cu vorbe în plus („Condensed", „Light")
-/// pierd puncte, ca să nu fure locul variantei obișnuite.
+/// How well a style from `fc-list` matches what was asked for.
+/// Higher = better; styles with extra words ("Condensed", "Light") lose
+/// points, so they do not steal the plain variant's place.
 fn style_score(style: &str, bold: bool, italic: bool) -> i32 {
     let s = style.to_ascii_lowercase();
     let is_italic = s.contains("italic") || s.contains("oblique");
@@ -257,7 +257,7 @@ fn style_score(style: &str, bold: bool, italic: bool) -> i32 {
     sc
 }
 
-/// Fișierul cel mai potrivit din familie, plus dacă e chiar varianta cerută.
+/// The best matching file in the family, plus whether it is the exact variant.
 fn pick_file(family: &str, bold: bool, italic: bool) -> Option<(PathBuf, bool)> {
     let mut best: Option<(i32, &Entry)> = None;
     for e in db().entries.iter().filter(|e| e.family == family) {
@@ -269,7 +269,7 @@ fn pick_file(family: &str, bold: bool, italic: bool) -> Option<(PathBuf, bool)> 
     best.map(|(sc, e)| (e.file.clone(), sc >= 20))
 }
 
-/// Fața de rezervă: DejaVu Sans încorporat în binar.
+/// The fallback face: DejaVu Sans embedded in the binary.
 fn fallback(bold: bool) -> Face {
     let data = if bold { BOLD } else { REGULAR };
     let font = FontVec::try_from_vec(data.to_vec()).expect("DejaVu încorporat invalid");
@@ -280,8 +280,8 @@ fn fallback(bold: bool) -> Face {
 }
 
 fn build(family: &str, bold: bool, italic: bool) -> Face {
-    // familia implicită fără cursiv vine din binar: e mereu disponibilă și
-    // e deja înregistrată în egui de `install`
+    // the default family without italic comes from the binary: it is always
+    // available and `install` has already registered it in egui
     if family == DEFAULT_FAMILY && !italic {
         return fallback(bold);
     }
@@ -300,7 +300,7 @@ fn build(family: &str, bold: bool, italic: bool) -> Face {
         }
     };
     let name = egui_name(family, bold, italic);
-    // colecțiile .ttc au mai multe fețe; o luăm pe prima
+    // .ttc collections hold several faces; we take the first one
     match FontVec::try_from_vec_and_index(data.clone(), 0) {
         Ok(font) => {
             REG.with_borrow_mut(|r| {
@@ -338,7 +338,7 @@ fn face_of(o: &TextOpts) -> Face {
     f
 }
 
-// ------------------------------------------------------- înregistrarea în egui
+// ------------------------------------------------------- registering with egui
 
 fn apply(ctx: &egui::Context) {
     let mut f = egui::FontDefinitions::default();
@@ -361,20 +361,20 @@ pub fn install(ctx: &egui::Context) {
     apply(ctx);
 }
 
-/// Se asigură că familia cerută e citită de pe disc ȘI cunoscută de egui.
-/// Se cheamă din fereastra de text, nu din desenare: `set_fonts` reface
-/// atlasul, deci n-are ce căuta în mijlocul unui cadru de pictat.
+/// Makes sure the requested family is read from disk AND known to egui.
+/// Called from the text window, not from drawing: `set_fonts` rebuilds the
+/// atlas, so it has no business in the middle of a paint frame.
 pub fn register(ctx: &egui::Context, o: &TextOpts) {
     let name = face_of(o).egui;
     if !LIVE.with_borrow(|l| l.contains(&name)) && !PEND.with_borrow(|p| p.contains(&name)) {
         apply(ctx);
-        // fontul nou se vede din cadrul următor, deci mai cerem unul
+        // the new font only shows up from the next frame, so we ask for one more
         ctx.request_repaint();
     }
 }
 
-/// De chemat la începutul fiecărui cadru: ce s-a trimis la `set_fonts` în
-/// cadrul precedent e acum instalat și poate fi cerut fără riscul unei panici.
+/// To be called at the start of every frame: whatever was sent to `set_fonts`
+/// in the previous frame is installed now and can be asked for without a panic.
 pub fn sync() {
     PEND.with_borrow_mut(|p| {
         if !p.is_empty() {
@@ -383,8 +383,8 @@ pub fn sync() {
     });
 }
 
-/// `FontId`-ul pentru preview. Dacă familia n-a apucat să ajungă la egui,
-/// cădem pe DejaVu în loc să cerem o familie necunoscută (egui ar intra în panică).
+/// The `FontId` for the preview. If the family has not reached egui yet, we
+/// fall back to DejaVu instead of asking for an unknown family (egui would panic).
 pub fn opts_font_id(o: &TextOpts, size: f32) -> FontId {
     let f = face_of(o);
     let name = if LIVE.with_borrow(|l| l.contains(&f.egui)) {
@@ -397,7 +397,7 @@ pub fn opts_font_id(o: &TextOpts, size: f32) -> FontId {
     FontId::new(size.max(1.0), FontFamily::Name(name.as_str().into()))
 }
 
-// ------------------------------------------------------ DejaVu, calea simplă
+// --------------------------------------------------- DejaVu, the simple path
 
 fn face(bold: bool) -> FontRef<'static> {
     FontRef::try_from_slice(if bold { BOLD } else { REGULAR }).expect("font invalid")
@@ -410,13 +410,13 @@ pub fn font_id(size: f32, bold: bool) -> FontId {
     )
 }
 
-/// Lățimea și înălțimea blocului de text în DejaVu. Fără wrap — doar `\n`
-/// rupe rândul, exact ca `layout_no_wrap` din preview. O folosește
-/// numărătorul, care scrie mereu cu fontul încorporat.
+/// Width and height of the text block in DejaVu. No wrapping — only `\n`
+/// breaks a line, exactly like `layout_no_wrap` in the preview. Used by the
+/// step counter, which always writes with the embedded font.
 pub fn measure(text: &str, size: f32, bold: bool) -> (f32, f32) {
     let f = face(bold);
     let s = f.as_scaled(PxScale::from(size.max(1.0)));
-    // aceeași formulă ca egui: row_height = ascent - descent + line_gap
+    // same formula as egui: row_height = ascent - descent + line_gap
     let rh = s.ascent() - s.descent() + s.line_gap();
     let mut w = 0.0f32;
     let mut lines = 0;
@@ -431,8 +431,8 @@ pub fn measure(text: &str, size: f32, bold: bool) -> (f32, f32) {
     (w, rh * lines.max(1) as f32)
 }
 
-/// Rasterizează pe CPU cu fontul încorporat. `x`,`y` sunt colțul stânga-sus
-/// al blocului; callback-ul primește pixelul și acoperirea (0..1).
+/// Rasterizes on the CPU with the embedded font. `x`,`y` are the block's
+/// top-left corner; the callback receives the pixel and the coverage (0..1).
 pub fn rasterize(text: &str, size: f32, bold: bool, x: f32, y: f32, mut px: impl FnMut(i32, i32, f32)) {
     let f = face(bold);
     let scale = PxScale::from(size.max(1.0));
@@ -453,9 +453,9 @@ pub fn rasterize(text: &str, size: f32, bold: bool, x: f32, y: f32, mut px: impl
     }
 }
 
-// ----------------------------------------------------- așezarea textului în casetă
+// ------------------------------------------------------ laying out text in the box
 
-/// Un rând așezat: colțul lui din stânga-sus și lățimea măsurată.
+/// One laid-out line: its top-left corner and its measured width.
 pub struct Line {
     pub text: String,
     pub x: f32,
@@ -463,18 +463,18 @@ pub struct Line {
     pub w: f32,
 }
 
-/// Rezultatul așezării. Aceeași structură hrănește și preview-ul, și exportul,
-/// deci alinierea și sublinierea ies identice în amândouă.
+/// The layout result. The same structure feeds both the preview and the export,
+/// so alignment and underlining come out identical in the two.
 pub struct Layout {
     pub lines: Vec<Line>,
     pub ascent: f32,
-    /// Poziția liniei de subliniere față de vârful rândului, și grosimea ei.
+    /// The underline's position relative to the top of the line, and its thickness.
     pub ul_top: f32,
     pub ul_h: f32,
 }
 
-/// Așază textul în `rect` după alinierile din `o`. `size` e mărimea deja
-/// scalată (preview) sau chiar `o.size` (export).
+/// Lays the text out in `rect` following the alignments in `o`. `size` is the
+/// already scaled size (preview) or `o.size` itself (export).
 pub fn layout(text: &str, o: &TextOpts, size: f32, rect: Rect) -> Layout {
     let f = face_of(o);
     let s = f.font.as_scaled(PxScale::from(size.max(1.0)));
@@ -505,8 +505,8 @@ pub fn layout(text: &str, o: &TextOpts, size: f32, rect: Rect) -> Layout {
             w: *w,
         })
         .collect();
-    // ab_glyph nu dă metricile de subliniere din tabela `post`, deci punem
-    // linia la jumătatea coborâtoarei — sub linia de bază, ca în GDI+
+    // ab_glyph does not expose the underline metrics from the `post` table, so
+    // we put the line at half the descender — below the baseline, as in GDI+
     Layout {
         lines,
         ascent: s.ascent(),
@@ -515,8 +515,8 @@ pub fn layout(text: &str, o: &TextOpts, size: f32, rect: Rect) -> Layout {
     }
 }
 
-/// Desenează pe CPU rândurile deja așezate, deplasate cu `off`
-/// (folosit de contur, care repetă textul în jurul poziției de bază).
+/// Draws the already laid-out lines on the CPU, shifted by `off`
+/// (used by the outline, which repeats the text around the base position).
 pub fn rasterize_layout(
     l: &Layout,
     o: &TextOpts,
@@ -545,8 +545,8 @@ pub fn rasterize_layout(
     }
 }
 
-/// Dreptunghiurile de subliniere, câte unul pe rând. Goale dacă nu s-a cerut
-/// subliniere sau dacă rândul e gol.
+/// The underline rectangles, one per line. Empty if no underline was asked
+/// for, or if the line is empty.
 pub fn underline_rects(l: &Layout, o: &TextOpts) -> Vec<Rect> {
     if !o.underline {
         return Vec::new();

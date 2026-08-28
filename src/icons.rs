@@ -1,8 +1,8 @@
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use std::collections::HashMap;
 
-/// Iconițele barei — aceleași fișiere Fugue Icons pe care le folosește ShareX
-/// (Yusuke Kamiyamane, CC-BY 3.0), preluate din depozitul lor.
+/// The toolbar icons — the same Fugue Icons files ShareX itself uses
+/// (Yusuke Kamiyamane, CC-BY 3.0), taken from their repository.
 macro_rules! icons {
     ($($n:literal),* $(,)?) => {
         const RAW: &[(&str, &[u8])] = &[

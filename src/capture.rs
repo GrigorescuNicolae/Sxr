@@ -2,8 +2,8 @@ use anyhow::{bail, Context, Result};
 use image::RgbaImage;
 use std::process::Command;
 
-/// Selecție de regiune prin selectorul nativ KDE.
-/// Temporar: va fi înlocuit cu overlay propriu pe wlr-layer-shell.
+/// Region selection through the native KDE selector.
+/// Temporary: will be replaced with our own wlr-layer-shell overlay.
 pub fn select_region() -> Result<RgbaImage> {
     let tmp = std::env::temp_dir().join(format!("sxr-{}.png", std::process::id()));
     let _ = std::fs::remove_file(&tmp);

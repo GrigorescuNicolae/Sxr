@@ -6,17 +6,18 @@ use crate::font;
 pub use crate::font::{Align, TextOpts};
 use crate::i18n::{Msg, t};
 
-/// Culorile implicite din ShareX (AnnotationOptions.cs).
+/// The default colors from ShareX (AnnotationOptions.cs).
 pub const PRIMARY: Color32 = Color32::from_rgb(242, 60, 60);
 pub const SECONDARY: Color32 = Color32::WHITE;
 pub const SHADOW: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 125);
 pub const SHADOW_OFFSET: Vec2 = Vec2::new(0.0, 1.0);
-/// Cât de tare se întunecă restul imaginii sub reflector
-/// (ShareX: SpotlightDim = 30, adică 30% negru).
+/// How much the rest of the image darkens under the spotlight
+/// (ShareX: SpotlightDim = 30, that is 30% black).
 pub const SPOTLIGHT_DIM: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 77);
 
-/// Uneltele din bara editorului clasic, în ordinea exactă din ShapeType (Enums.cs),
-/// filtrate ca în modul editor: formele de regiune lipsesc, crop și cut out rămân.
+/// The tools in the classic editor's toolbar, in the exact ShapeType order
+/// (Enums.cs), filtered as in editor mode: the region shapes are gone, crop and
+/// cut out stay.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Select,
@@ -71,8 +72,8 @@ impl Tool {
         Tool::CutOut,
     ];
 
-    /// Numele fișierului din assets/icons — aceleași iconițe Fugue pe care le
-    /// folosește ShareX, varianta pentru temă întunecată acolo unde există.
+    /// The file name in assets/icons — the same Fugue icons ShareX uses, in the
+    /// dark-theme variant wherever one exists.
     pub fn icon(self) -> &'static str {
         match self {
             Tool::Select => "cursor",
@@ -101,7 +102,7 @@ impl Tool {
         }
     }
 
-    /// Cheia de traducere a numelui uneltei.
+    /// The translation key for the tool's name.
     pub fn msg(self) -> Msg {
         match self {
             Tool::Select => Msg::ToolSelect,
@@ -130,12 +131,12 @@ impl Tool {
         }
     }
 
-    /// Numele uneltei în limba curentă, cum apare în bară.
+    /// The tool's name in the current language, as it appears in the toolbar.
     pub fn tooltip(self) -> &'static str {
         t(self.msg())
     }
 
-    /// Scurtătura din ShapeManager.cs. Numpad-ul e legat separat în app.rs.
+    /// The shortcut from ShapeManager.cs. The numpad is bound separately in app.rs.
     pub fn key(self) -> Option<egui::Key> {
         use egui::Key as K;
         Some(match self {
@@ -158,7 +159,8 @@ impl Tool {
         })
     }
 
-    /// Ce e deja funcțional. Restul apar în bară (poziția contează) dar anunță în status.
+    /// What already works. The rest do show up in the toolbar (their position
+    /// matters) but only announce themselves in the status bar.
     pub fn ready(self) -> bool {
         matches!(
             self,
@@ -188,52 +190,53 @@ impl Tool {
         )
     }
 
-    /// Unealta lasă în urmă o formă cu text, deci se plasează și dintr-un
-    /// simplu clic și deschide fereastra de introducere a textului. Balonul
-    /// intră aici pentru că în ShareX `SpeechBalloonDrawingShape` derivă din
-    /// `TextDrawingShape`: se poartă în toate privințele ca o casetă de text.
+    /// The tool leaves behind a shape carrying text, so it can also be placed
+    /// with a single click and it opens the text input window. The balloon
+    /// belongs here because in ShareX `SpeechBalloonDrawingShape` derives from
+    /// `TextDrawingShape`: it behaves like a text box in every respect.
     pub fn is_text(self) -> bool {
         matches!(self, Tool::TextOutline | Tool::TextBackground | Tool::SpeechBalloon)
     }
 }
 
-/// Ce citește fereastra de introducere a textului dintr-o formă existentă.
+/// What the text input window reads out of an existing shape.
 pub struct TextInfo<'a> {
     pub text: &'a str,
     pub opts: &'a TextOpts,
-    /// Conturul (la textul cu contur) sau fundalul casetei (în rest).
+    /// The outline (for outlined text) or the box background (otherwise).
     pub color2: Color32,
-    /// Forma e text cu contur, nu text cu fundal.
+    /// The shape is outlined text, not text with a background.
     pub outline: bool,
 }
 
-/// Toate coordonatele sunt în spațiul imaginii (pixeli sursă), nu al ecranului.
-/// Așa preview-ul și exportul rămân identice indiferent de zoom.
-/// Fără `Debug`: `TextureHandle` nu îl implementează, iar noi nu îl foloseam.
+/// All coordinates are in image space (source pixels), not screen space.
+/// That way the preview and the export stay identical whatever the zoom.
+/// No `Debug`: `TextureHandle` does not implement it, and we were not using it.
 #[derive(Clone)]
 pub enum Shape {
     Rect { rect: Rect, border: Color32, fill: Color32, width: f32, radius: f32 },
     Ellipse { rect: Rect, border: Color32, fill: Color32, width: f32 },
-    /// Linie cu noduri de curbură, ca `LineDrawingShape` din ShareX: pe lângă
-    /// capete ține `mid`, punctele intermediare. Cât timp `curbat` e fals ele
-    /// se așază singure pe segmentul dintre capete (`AutoPositionCenterPoints`)
-    /// și linia se desenează dreaptă; după ce unul e tras cu mouse-ul rămân
-    /// unde le-a pus utilizatorul, iar linia devine un spline cardinal.
+    /// A line with curve nodes, like ShareX's `LineDrawingShape`: besides the
+    /// endpoints it keeps `mid`, the intermediate points. As long as `curbat` is
+    /// false they place themselves on the segment between the endpoints
+    /// (`AutoPositionCenterPoints`) and the line is drawn straight; once one has
+    /// been dragged with the mouse they stay where the user put them, and the
+    /// line becomes a cardinal spline.
     Line { from: Pos2, to: Pos2, mid: Vec<Pos2>, curbat: bool, color: Color32, width: f32 },
     Arrow { from: Pos2, to: Pos2, mid: Vec<Pos2>, curbat: bool, color: Color32, width: f32 },
     Free { pts: Vec<Pos2>, color: Color32, width: f32, arrow: bool },
     Text {
         rect: Rect,
         text: String,
-        /// Fontul, mărimea, culoarea, B/I/U și alinierile — tot ce se schimbă
-        /// din fereastra de introducere a textului.
+        /// Font, size, color, B/I/U and the alignments — everything that gets
+        /// changed from the text input window.
         opts: TextOpts,
         fill: Color32,
         outline: Color32,
         outline_w: f32,
         radius: f32,
     },
-    /// Balon de dialog: casetă cu text plus o coadă triunghiulară spre `tail`.
+    /// Speech balloon: a text box plus a triangular tail pointing at `tail`.
     Balloon {
         rect: Rect,
         tail: Pos2,
@@ -245,31 +248,31 @@ pub enum Shape {
         radius: f32,
     },
     Step { center: Pos2, n: u32, size: f32, fill: Color32, border: Color32, text: Color32, width: f32 },
-    /// Lupa: conținutul imaginii de sub formă, mărit de `strength` la sută.
+    /// The magnifier: the image content under the shape, enlarged by `strength` percent.
     Magnify { rect: Rect, strength: f32, border: Color32, width: f32 },
     Highlight { rect: Rect, color: Color32 },
     Pixelate { rect: Rect, block: f32 },
     Blur { rect: Rect, radius: f32 },
     Spotlight { rect: Rect },
-    /// Guma inteligentă: dreptunghi plin cu culoarea calculată o singură dată
-    /// la creare, din inelul de 1px din jurul lui.
+    /// The smart eraser: a rectangle filled with the color computed once, at
+    /// creation time, from the 1px ring around it.
     Erase { rect: Rect, color: Color32 },
-    /// Imagine inserată (fișier, captură de ecran, sticker sau cursor).
-    /// `img` e sursa pentru exportul pe CPU, `tex` aceeași imagine urcată o
-    /// singură dată pentru preview. `Arc`, fiindcă formele se clonează la
-    /// fiecare pas de undo și nu vrem să copiem pixelii de fiecare dată.
+    /// An inserted image (file, screen capture, sticker or cursor).
+    /// `img` is the source for the CPU export, `tex` the same image uploaded
+    /// once for the preview. `Arc`, because the shapes get cloned on every undo
+    /// step and we do not want to copy the pixels each time.
     Img { rect: Rect, img: Arc<RgbaImage>, tex: egui::TextureHandle },
 }
 
-/// Capul săgeții, ca `CustomLineCap`-ul din ShareX: un vârf PLIN cu spatele
-/// concav, nu două linii. Dimensiunile sunt în unități de grosime a liniei
-/// (arrowWidth=2, arrowHeight=6, arrowCurve=1), fiindcă GDI+ scalează capul
-/// cu pana — la grosime 4 iese un cap de 24x16 px, exact ca în ShareX.
+/// The arrowhead, like ShareX's `CustomLineCap`: a SOLID tip with a concave
+/// back, not two lines. The dimensions are in units of line width
+/// (arrowWidth=2, arrowHeight=6, arrowCurve=1), because GDI+ scales the cap
+/// with the pen — at width 4 it comes out 24x16 px, exactly as in ShareX.
 ///
-/// Întoarce conturul în ordine: vârf, colț dreapta, scobitura din spate,
-/// colț stânga. ShareX folosește o curbă pentru spate; noi punem două
-/// segmente drepte, care se abat sub un pixel la grosimile uzuale și au
-/// avantajul că previzualizarea și exportul desenează exact aceeași formă.
+/// Returns the outline in order: tip, right corner, the notch at the back,
+/// left corner. ShareX uses a curve for the back; we put two straight
+/// segments there, which stray less than a pixel at the usual widths and have
+/// the advantage that the preview and the export draw exactly the same shape.
 pub fn arrow_head(from: Pos2, to: Pos2, width: f32) -> [Pos2; 4] {
     let w = width.max(1.0);
     let dir = to - from;
@@ -283,8 +286,8 @@ pub fn arrow_head(from: Pos2, to: Pos2, width: f32) -> [Pos2; 4] {
     ]
 }
 
-/// Capul plin în previzualizare: două triunghiuri, fiindcă forma e concavă
-/// la scobitură, iar `convex_polygon` din egui presupune convexitate.
+/// The solid head in the preview: two triangles, because the shape is concave
+/// at the notch and egui's `convex_polygon` assumes convexity.
 fn draw_arrow_head(
     p: &egui::Painter,
     [tip, c1, mid, c2]: [Pos2; 4],
@@ -297,29 +300,29 @@ fn draw_arrow_head(
     }
 }
 
-/// Unde se oprește linia ca să nu răzbată prin capul plin — `BaseInset`-ul
-/// din ShareX, adică arrowHeight - arrowCurve = 5 grosimi. La săgeți foarte
-/// scurte se oprește la punctul de plecare, nu în spatele lui.
+/// Where the line stops so it does not poke through the solid head — ShareX's
+/// `BaseInset`, that is arrowHeight - arrowCurve = 5 widths. On very short
+/// arrows it stops at the start point, not behind it.
 pub fn arrow_base(from: Pos2, to: Pos2, width: f32) -> Pos2 {
     let dir = to - from;
     let len = dir.length().max(1.0);
     to - (dir / len) * (5.0 * width.max(1.0)).min(len)
 }
 
-/// Câte puncte de curbură poate avea o linie (ShareX: `MaximumCenterPointCount`).
+/// How many curve points a line can have (ShareX: `MaximumCenterPointCount`).
 pub const MAX_MID: usize = 5;
 
-/// Tensiunea implicită a lui `g.DrawCurve` din GDI+.
+/// The default tension of GDI+'s `g.DrawCurve`.
 const CURVE_TENSION: f32 = 0.5;
 
-/// Câte segmente drepte punem pe fiecare bucată de spline. Aceeași
-/// discretizare se folosește și în previzualizare și la export, ca cele două
-/// căi de desenare să nu se despartă.
+/// How many straight segments we put on each spline piece. The same
+/// discretization is used both in the preview and in the export, so the two
+/// drawing paths cannot drift apart.
 const CURVE_STEPS: usize = 24;
 
-/// `AutoPositionCenterPoints` din ShareX: cât timp niciun nod din mijloc n-a
-/// fost tras, punctele intermediare se așază prin interpolare liniară între
-/// capete, deci linia rămâne dreaptă și nodurile stau chiar pe ea.
+/// ShareX's `AutoPositionCenterPoints`: as long as no middle node has been
+/// dragged, the intermediate points are placed by linear interpolation between
+/// the endpoints, so the line stays straight and the nodes sit right on it.
 pub fn auto_mid(from: Pos2, to: Pos2, mid: &mut [Pos2], curbat: bool) {
     if curbat {
         return;
@@ -330,7 +333,7 @@ pub fn auto_mid(from: Pos2, to: Pos2, mid: &mut [Pos2], curbat: bool) {
     }
 }
 
-/// Toate punctele liniei, în ordine: capătul de plecare, cele din mijloc, capătul final.
+/// All the points of the line, in order: the start point, the middle ones, the end.
 fn line_pts(from: Pos2, to: Pos2, mid: &[Pos2]) -> Vec<Pos2> {
     let mut v = Vec::with_capacity(mid.len() + 2);
     v.push(from);
@@ -339,14 +342,14 @@ fn line_pts(from: Pos2, to: Pos2, mid: &[Pos2]) -> Vec<Pos2> {
     v
 }
 
-/// Linia frântă care aproximează forma desenată: coarda dreaptă cât timp forma
-/// nu e curbată, altfel splinele cardinal discretizat.
+/// The polyline that approximates the drawn shape: the straight chord while the
+/// shape is not curved, otherwise the discretized cardinal spline.
 ///
-/// `g.DrawCurve` din GDI+ e un spline cardinal cu tensiunea 0.5 care trece prin
-/// toate punctele. Îl convertim în Bezier cubice: pentru punctul `i` tangenta e
-/// `T_i = tensiune * (P_{i+1} - P_{i-1})` (la capete se ia diferența față de
-/// singurul vecin), iar bucata dintre `P_i` și `P_{i+1}` are punctele de
-/// control `P_i + T_i/3` și `P_{i+1} - T_{i+1}/3`.
+/// GDI+'s `g.DrawCurve` is a cardinal spline with tension 0.5 that passes
+/// through all the points. We convert it into cubic Beziers: for point `i` the
+/// tangent is `T_i = tension * (P_{i+1} - P_{i-1})` (at the ends we take the
+/// difference against the only neighbor), and the piece between `P_i` and
+/// `P_{i+1}` has control points `P_i + T_i/3` and `P_{i+1} - T_{i+1}/3`.
 pub fn curve_poly(from: Pos2, to: Pos2, mid: &[Pos2], curbat: bool) -> Vec<Pos2> {
     if !curbat || mid.is_empty() {
         return vec![from, to];
@@ -373,8 +376,8 @@ pub fn curve_poly(from: Pos2, to: Pos2, mid: &[Pos2], curbat: bool) -> Vec<Pos2>
     out
 }
 
-/// Punctul de pe linia frântă aflat la distanța `d` de capătul final, măsurată
-/// DE-A LUNGUL ei. Dacă linia e mai scurtă, întoarce punctul de plecare.
+/// The point on the polyline at distance `d` from the end point, measured
+/// ALONG it. If the line is shorter, returns the start point.
 fn back_along(poly: &[Pos2], d: f32) -> Pos2 {
     let mut rest = d;
     for w in poly.windows(2).rev() {
@@ -387,7 +390,7 @@ fn back_along(poly: &[Pos2], d: f32) -> Pos2 {
     poly[0]
 }
 
-/// Linia frântă scurtată cu `d` la capătul final, tot pe lungimea curbei.
+/// The polyline shortened by `d` at the end, again along the curve's length.
 fn poly_trim(poly: &[Pos2], d: f32) -> Vec<Pos2> {
     let total: f32 = poly.windows(2).map(|w| w[0].distance(w[1])).sum();
     let target = total - d;
@@ -408,25 +411,25 @@ fn poly_trim(poly: &[Pos2], d: f32) -> Vec<Pos2> {
     out
 }
 
-/// Geometria săgeții pe o linie frântă: coada (scurtată cu 5 grosimi ca linia
-/// să nu răzbată prin capul plin, retragere măsurată de-a lungul curbei) și
-/// conturul capului, orientat după tangenta din capătul final. Pe o linie
-/// dreaptă trece prin exact aceleași `arrow_base`/`arrow_head` ca înainte.
+/// The arrow's geometry on a polyline: the tail (shortened by 5 widths so the
+/// line does not poke through the solid head, the pull-back measured along the
+/// curve) and the head's outline, oriented by the tangent at the end point. On a
+/// straight line it goes through exactly the same `arrow_base`/`arrow_head` as
+/// before.
 pub fn arrow_geom(poly: &[Pos2], width: f32) -> (Vec<Pos2>, [Pos2; 4]) {
     let (from, to) = (poly[0], poly[poly.len() - 1]);
     if poly.len() == 2 {
         return (vec![from, arrow_base(from, to, width)], arrow_head(from, to, width));
     }
     let w = width.max(1.0);
-    // tangenta la capăt: direcția dinspre un punct apropiat de pe curbă;
-    // `arrow_head` normalizează cu `max(1.0)`, deci pasul nu poate fi sub 1 px
+    // the tangent at the end: the direction from a nearby point on the curve;
+    // `arrow_head` normalizes with `max(1.0)`, so the step cannot go below 1 px
     let tan_from = back_along(poly, (0.75 * w).max(2.0));
     (poly_trim(poly, 5.0 * w), arrow_head(tan_from, to, w))
 }
 
-/// Desenează în previzualizare o linie frântă. Când are doar două puncte
-/// folosim `line_segment`, drumul de dinainte, ca liniile drepte să iasă
-/// neschimbate.
+/// Draws a polyline in the preview. When it has only two points we use
+/// `line_segment`, the old path, so straight lines come out unchanged.
 fn draw_poly(p: &Painter, poly: &[Pos2], st: Stroke, map: &impl Fn(Pos2) -> Pos2) {
     match poly.len() {
         0 | 1 => {}
@@ -439,7 +442,7 @@ fn draw_poly(p: &Painter, poly: &[Pos2], st: Stroke, map: &impl Fn(Pos2) -> Pos2
     }
 }
 
-/// Culoarea medie a unui bloc din imaginea sursă (pentru pixelare).
+/// The average color of a block from the source image (for pixelation).
 pub fn block_avg(src: &RgbaImage, x0: i64, y0: i64, x1: i64, y1: i64) -> Color32 {
     let (w, h) = (src.width() as i64, src.height() as i64);
     let (x0, y0) = (x0.max(0), y0.max(0));
@@ -460,7 +463,7 @@ pub fn block_avg(src: &RgbaImage, x0: i64, y0: i64, x1: i64, y1: i64) -> Color32
     Color32::from_rgb((r / n) as u8, (g / n) as u8, (b / n) as u8)
 }
 
-/// Regiunea estompată: pixeli RGBA gata calculați, plus colțul din care încep.
+/// The blurred region: ready-computed RGBA pixels, plus the corner they start at.
 pub struct BlurBuf {
     pub x0: i64,
     pub y0: i64,
@@ -469,9 +472,9 @@ pub struct BlurBuf {
     pub px: Vec<[u8; 4]>,
 }
 
-/// O trecere de box blur pe o singură direcție, cu fereastră glisantă (deci
-/// costul nu depinde de rază). Elementul `j` al liniei `i` stă la
-/// `i * lstep + j * step`; marginile se replică.
+/// One box blur pass along a single direction, with a sliding window (so the
+/// cost does not depend on the radius). Element `j` of line `i` sits at
+/// `i * lstep + j * step`; the edges are replicated.
 fn box_pass(s: &[[u8; 4]], d: &mut [[u8; 4]], lines: usize, len: usize, lstep: usize, step: usize, r: usize) {
     if len == 0 {
         return;
@@ -502,10 +505,10 @@ fn box_pass(s: &[[u8; 4]], d: &mut [[u8; 4]], lines: usize, len: usize, lstep: u
     }
 }
 
-/// Estompează conținutul sursei din dreptunghi: trei treceri de box blur
-/// separabil, care aproximează un gaussian dar rămân liniare ca timp.
-/// Raza pe trecere e o treime din cea cerută, ca întinderea totală a nucleului
-/// să fie aproximativ `radius`.
+/// Blurs the source content inside the rectangle: three separable box blur
+/// passes, which approximate a gaussian but stay linear in time.
+/// The radius per pass is a third of the requested one, so the kernel's total
+/// spread comes out roughly `radius`.
 pub fn blur_region(src: &RgbaImage, rect: Rect, radius: f32) -> Option<BlurBuf> {
     let clip = Rect::from_min_max(Pos2::ZERO, Pos2::new(src.width() as f32, src.height() as f32));
     let r = Rect::from_two_pos(rect.min, rect.max).intersect(clip);
@@ -532,8 +535,8 @@ pub fn blur_region(src: &RgbaImage, rect: Rect, radius: f32) -> Option<BlurBuf> 
     Some(BlurBuf { x0, y0, w, h, px })
 }
 
-/// Media pixelilor de pe inelul de 1px din exteriorul dreptunghiului.
-/// Numără doar partea validă a inelului; negru dacă nu prinde niciun pixel.
+/// The average of the pixels on the 1px ring outside the rectangle.
+/// Only the valid part of the ring counts; black if it catches no pixel.
 pub fn ring_avg(src: &RgbaImage, rect: Rect) -> Color32 {
     let r = Rect::from_two_pos(rect.min, rect.max);
     let (x0, y0) = (r.min.x.round() as i64, r.min.y.round() as i64);
@@ -566,7 +569,7 @@ pub fn ring_avg(src: &RgbaImage, rect: Rect) -> Color32 {
     }
 }
 
-/// Dreptunghiurile tuturor reflectoarelor din listă, normalizate.
+/// The rectangles of every spotlight in the list, normalized.
 pub fn spotlight_rects(shapes: &[Shape]) -> Vec<Rect> {
     shapes
         .iter()
@@ -577,15 +580,15 @@ pub fn spotlight_rects(shapes: &[Shape]) -> Vec<Rect> {
         .collect()
 }
 
-/// Poziția primului reflector din listă: acolo se desenează stratul întunecat,
-/// o singură dată, ca două reflectoare să nu se întunece unul pe altul.
+/// The position of the first spotlight in the list: that is where the dark
+/// layer is drawn, just once, so two spotlights cannot darken each other.
 pub fn spotlight_at(shapes: &[Shape]) -> Option<usize> {
     shapes.iter().position(|s| matches!(s, Shape::Spotlight { .. }))
 }
 
-/// Descompune „toată imaginea minus reuniunea găurilor" într-o listă de
-/// dreptunghiuri disjuncte, prin baleiere pe benzi orizontale. Preview-ul și
-/// exportul pornesc de la aceeași listă, deci dau același rezultat.
+/// Decomposes "the whole image minus the union of the holes" into a list of
+/// disjoint rectangles, by sweeping horizontal bands. The preview and the
+/// export start from the same list, so they give the same result.
 pub fn spotlight_cover(holes: &[Rect], w: f32, h: f32) -> Vec<Rect> {
     let full = Rect::from_min_max(Pos2::ZERO, Pos2::new(w, h));
     let holes: Vec<Rect> = holes
@@ -627,8 +630,8 @@ pub fn spotlight_cover(holes: &[Rect], w: f32, h: f32) -> Vec<Rect> {
     out
 }
 
-/// Offseturile pe care le folosim ca să îngroșăm conturul textului.
-/// Aceleași în preview și în export, deci rezultatul e identic prin construcție.
+/// The offsets we use to thicken the text outline.
+/// The same in preview and in export, so the result is identical by construction.
 pub fn outline_offsets(w: f32) -> Vec<Vec2> {
     if w <= 0.0 {
         return Vec::new();
@@ -642,38 +645,39 @@ pub fn outline_offsets(w: f32) -> Vec<Vec2> {
         .collect()
 }
 
-/// Cercul numărătorului: raza acoperă diagonala casetei de text, nu doar
-/// latura mai lungă — altfel, la două sau trei cifre, colțurile cifrelor
-/// ajung pe marginea cercului. Spațiul liber e proporțional cu fontul, ca
-/// să arate la fel la orice mărime aleasă.
+/// The step counter's circle: the radius covers the diagonal of the text box,
+/// not just the longer side — otherwise, at two or three digits, the corners of
+/// the digits land on the circle's edge. The free space is proportional to the
+/// font, so it looks the same at any chosen size.
 pub fn step_radius(n: u32, size: f32) -> f32 {
     let (w, _) = font::measure(&n.to_string(), size, true);
-    // înălțimea vizuală a cifrelor, nu înălțimea rândului: aceasta din urmă
-    // include loc pentru diacritice și coborâtoare, pe care cifrele nu le au
+    // the visual height of the digits, not the row height: the latter includes
+    // room for diacritics and descenders, which the digits do not have
     let h = size * 0.72;
     w.hypot(h) / 2.0 + size * 0.21
 }
 
-/// Coada balonului: baza ei pe latura casetei plus vârful.
+/// The balloon's tail: its base on the side of the box, plus the tip.
 pub struct Tail {
     pub base: [Pos2; 2],
     pub tip: Pos2,
-    /// Versorul dinspre latura pe care stă baza spre interiorul casetei.
+    /// The unit vector from the side the base sits on toward the box's interior.
     inward: Vec2,
 }
 
 impl Tail {
-    /// Triunghiul de umplut. Baza intră în casetă cu grosimea conturului, ca
-    /// umplerea să acopere linia de contur care ar tăia altfel gâtul cozii.
+    /// The triangle to fill. The base reaches into the box by the border width,
+    /// so the fill covers the border line that would otherwise cut the tail's
+    /// neck.
     pub fn fill_pts(&self, width: f32) -> [Pos2; 3] {
         let e = self.inward * width.max(0.0);
         [self.base[0] + e, self.base[1] + e, self.tip]
     }
 }
 
-/// Baza cozii stă pe latura casetei cea mai apropiată de vârf, are lățimea
-/// `min(24, latura/3)` și e centrată pe proiecția vârfului pe acea latură,
-/// limitată ca să nu iasă din ea. Aceeași funcție în preview și în export.
+/// The tail's base sits on the box side closest to the tip, is `min(24, side/3)`
+/// wide and is centered on the tip's projection onto that side, clamped so it
+/// cannot run off it. The same function in preview and in export.
 pub fn balloon_tail(rect: Rect, tail: Pos2) -> Tail {
     let r = Rect::from_two_pos(rect.min, rect.max);
     let sides = [
@@ -701,13 +705,14 @@ pub fn balloon_tail(rect: Rect, tail: Pos2) -> Tail {
     Tail { base: [c - dir * half, c + dir * half], tip: tail, inward }
 }
 
-/// Caseta balonului (și chenarul lupei) ca dreptunghi obișnuit: preview-ul și
-/// exportul refolosesc astfel codul deja verificat, deci ies identic.
+/// The balloon's box (and the magnifier's frame) as an ordinary rectangle: this
+/// way the preview and the export reuse code that is already checked, so they
+/// come out identical.
 pub fn box_shape(rect: Rect, fill: Color32, border: Color32, width: f32, radius: f32) -> Shape {
     Shape::Rect { rect, border, fill, width, radius }
 }
 
-/// Textul balonului ca formă de text fără fundal: logica de așezare rămâne una singură.
+/// The balloon's text as a text shape with no background: one single layout logic.
 pub fn text_shape(rect: Rect, text: &str, opts: &TextOpts) -> Shape {
     Shape::Text {
         rect,
@@ -720,10 +725,10 @@ pub fn text_shape(rect: Rect, text: &str, opts: &TextOpts) -> Shape {
     }
 }
 
-/// Blocurile lupei: pentru fiecare pixel al regiunii sursă, dreptunghiul pe
-/// care îl acoperă mărit (în spațiul imaginii) și culoarea lui. Regiunea sursă
-/// are dimensiunea `rect / (strength/100)`, e centrată pe centrul lui `rect` și
-/// e trunchiată la marginile imaginii.
+/// The magnifier's blocks: for each pixel of the source region, the rectangle
+/// it covers once enlarged (in image space) and its color. The source region has
+/// the size `rect / (strength/100)`, is centered on the center of `rect` and is
+/// clipped to the image edges.
 pub fn magnify_blocks(src: &RgbaImage, rect: Rect, strength: f32) -> Vec<(Rect, Color32)> {
     let k = (strength / 100.0).max(1.0);
     let r = Rect::from_two_pos(rect.min, rect.max);
@@ -765,7 +770,7 @@ pub fn magnify_blocks(src: &RgbaImage, rect: Rect, strength: f32) -> Vec<(Rect, 
 }
 
 impl Shape {
-    /// Copia desenată dedesubt ca umbră (ShareX: shadow on, offset 0/1, negru 125).
+    /// The copy drawn underneath as a shadow (ShareX: shadow on, offset 0/1, black 125).
     pub fn shadow_copy(&self) -> Option<Shape> {
         let op = |c: Color32| if c.a() == 255 { SHADOW } else { Color32::TRANSPARENT };
         let mut s = match self {
@@ -774,8 +779,8 @@ impl Shape {
             | Shape::Blur { .. }
             | Shape::Spotlight { .. }
             | Shape::Erase { .. }
-            // o umbră dreptunghiulară ar apărea și în jurul zonelor
-            // transparente ale imaginii, deci nu desenăm niciuna
+            // a rectangular shadow would also show up around the image's
+            // transparent areas, so we draw none
             | Shape::Img { .. } => return None,
             Shape::Rect { rect, fill, width, radius, .. } => Shape::Rect {
                 rect: *rect,
@@ -821,7 +826,7 @@ impl Shape {
                 outline_w: *outline_w,
                 radius: *radius,
             },
-            // balonul: casetă + coadă + text, toate în culoarea umbrei
+            // the balloon: box + tail + text, all in the shadow color
             Shape::Balloon { rect, tail, text, opts, fill, width, radius, .. } => Shape::Balloon {
                 rect: *rect,
                 tail: *tail,
@@ -832,7 +837,7 @@ impl Shape {
                 width: *width,
                 radius: *radius,
             },
-            // lupa nu se remărește în umbră: rămâne doar conturul ei
+            // the magnifier does not magnify again in the shadow: only its outline stays
             Shape::Magnify { rect, border: _, width, .. } => Shape::Rect {
                 rect: *rect,
                 border: SHADOW,
@@ -840,7 +845,7 @@ impl Shape {
                 width: *width,
                 radius: 0.0,
             },
-            // umbra numărătorului e doar cercul, nu și cifra
+            // the step counter's shadow is only the circle, not the digit
             Shape::Step { center, n, size, fill, width, .. } => Shape::Step {
                 center: *center,
                 n: *n,
@@ -855,7 +860,7 @@ impl Shape {
         Some(s)
     }
 
-    /// Desenează în preview. `map` duce din spațiul imaginii în cel al ecranului.
+    /// Draws into the preview. `map` goes from image space into screen space.
     pub fn draw(&self, p: &Painter, map: impl Fn(Pos2) -> Pos2 + Copy, zoom: f32, src: &RgbaImage) {
         let sw = |w: f32| (w * zoom).max(1.0);
         match self {
@@ -915,8 +920,8 @@ impl Shape {
                 if text.is_empty() {
                     return;
                 }
-                // aceeași așezare ca la export: rând cu rând, la pozițiile date
-                // de aliniere, ca preview-ul și PNG-ul să nu se despartă
+                // the same layout as in the export: line by line, at the positions
+                // given by the alignment, so the preview and the PNG cannot drift
                 let size = opts.size * zoom;
                 let lay = font::layout(text, opts, size, r);
                 let fid = font::opts_font_id(opts, size);
@@ -939,9 +944,9 @@ impl Shape {
                 row(Vec2::ZERO, opts.color);
             }
             Shape::Balloon { rect, tail, text, opts, fill, border, width, radius } => {
-                // schița nefinalizată poate avea `max < min` (tragere înapoi)
+                // an unfinished draft can have `max < min` (dragging backwards)
                 let rect = &Rect::from_two_pos(rect.min, rect.max);
-                // caseta: exact aceleași reguli ca dreptunghiul cu colțuri rotunjite
+                // the box: exactly the same rules as the rounded-corner rectangle
                 box_shape(*rect, *fill, *border, *width, *radius).draw(p, map, zoom, src);
                 let t = balloon_tail(*rect, *tail);
                 if fill.a() > 0 {
@@ -949,13 +954,13 @@ impl Shape {
                     p.add(egui::Shape::convex_polygon(pts, *fill, Stroke::NONE));
                 }
                 if *width > 0.0 && border.a() > 0 {
-                    // doar laturile oblice: baza ar trage o linie prin balon
+                    // only the slanted sides: the base would draw a line through the balloon
                     let st = Stroke::new(sw(*width), *border);
                     for b in t.base {
                         p.line_segment([map(b), map(t.tip)], st);
                     }
                 }
-                // textul trece prin aceeași cale ca la caseta de text
+                // the text goes through the same path as the text box
                 text_shape(*rect, text, opts).draw(p, map, zoom, src);
             }
             Shape::Magnify { rect, strength, border, width } => {
@@ -1016,8 +1021,8 @@ impl Shape {
             Shape::Blur { rect, radius } => {
                 let rect = &Rect::from_two_pos(rect.min, rect.max);
                 let Some(b) = blur_region(src, *rect, *radius) else { return };
-                // un singur mesh cu câte un dreptunghi per pixel (rulările de
-                // aceeași culoare se unesc), ca să nu inundăm painter-ul
+                // a single mesh with one rectangle per pixel (runs of the same
+                // color are merged), so we do not flood the painter
                 let mut mesh = egui::Mesh::default();
                 for y in 0..b.h {
                     let (yt, yb) = ((b.y0 + y as i64) as f32, (b.y0 + y as i64 + 1) as f32);
@@ -1039,16 +1044,16 @@ impl Shape {
                 }
                 p.add(egui::Shape::mesh(mesh));
             }
-            // Reflectorul nu desenează nimic pe cont propriu: stratul întunecat
-            // se pune o singură dată, cu găuri pentru toate reflectoarele
-            // (vezi spotlight_cover, apelat din app.rs și render.rs).
+            // The spotlight draws nothing on its own: the dark layer is laid
+            // down just once, with holes for all the spotlights
+            // (see spotlight_cover, called from app.rs and render.rs).
             Shape::Spotlight { .. } => {}
             Shape::Erase { rect, color } => {
                 let r = Rect::from_two_pos(map(rect.min), map(rect.max));
                 p.rect_filled(r, egui::CornerRadius::ZERO, *color);
             }
-            // preview-ul lasă scalarea pe seama plăcii video; exportul pe CPU
-            // reeșantionează `img` biliniar, în render.rs
+            // the preview leaves the scaling to the graphics card; the CPU
+            // export resamples `img` bilinearly, in render.rs
             Shape::Img { rect, tex, .. } => {
                 let r = Rect::from_two_pos(map(rect.min), map(rect.max));
                 p.image(
@@ -1062,13 +1067,13 @@ impl Shape {
     }
 }
 
-/// Evidențierea: culoare semi-transparentă, ca marker-ul. Aceeași formulă
-/// în preview și în export, ca să nu apară diferențe la copiere.
+/// The highlight: a semi-transparent color, like a marker pen. The same formula
+/// in preview and in export, so no differences show up when copying.
 pub fn highlight_paint(c: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 128)
 }
 
-/// Punctul e în triunghi? Semnele produselor vectoriale trebuie să coincidă.
+/// Is the point inside the triangle? The cross product signs must all agree.
 fn in_tri(p: Pos2, a: Pos2, b: Pos2, c: Pos2) -> bool {
     let cr = |u: Pos2, v: Pos2| (v.x - u.x) * (p.y - u.y) - (v.y - u.y) * (p.x - u.x);
     let (d1, d2, d3) = (cr(a, b), cr(b, c), cr(c, a));
@@ -1077,10 +1082,10 @@ fn in_tri(p: Pos2, a: Pos2, b: Pos2, c: Pos2) -> bool {
     !(neg && pos)
 }
 
-/// Colțul opus rămâne ancorat la redimensionare, exact ca în ShareX.
-/// Cele opt noduri ale unui dreptunghi, în ordinea din `NodePosition`:
-/// colț stânga-sus, mijloc sus, colț dreapta-sus, mijloc dreapta, colț
-/// dreapta-jos, mijloc jos, colț stânga-jos, mijloc stânga.
+/// The opposite corner stays anchored while resizing, exactly as in ShareX.
+/// The eight nodes of a rectangle, in `NodePosition` order: top-left corner,
+/// top center, top-right corner, right center, bottom-right corner, bottom
+/// center, bottom-left corner, left center.
 pub fn rect_nodes(rect: Rect) -> Vec<Pos2> {
     let r = Rect::from_two_pos(rect.min, rect.max);
     let (cx, cy) = (r.center().x, r.center().y);
@@ -1096,8 +1101,8 @@ pub fn rect_nodes(rect: Rect) -> Vec<Pos2> {
     ]
 }
 
-/// Nodurile de colț mută ambele coordonate, cele de pe laturi doar una —
-/// latura opusă rămâne pe loc, ca în ShareX.
+/// The corner nodes move both coordinates, the side ones only one of them —
+/// the opposite side stays put, as in ShareX.
 fn resize(rect: Rect, idx: usize, p: Pos2) -> Rect {
     let r = Rect::from_two_pos(rect.min, rect.max);
     let (mut min, mut max) = (r.min, r.max);
@@ -1131,15 +1136,15 @@ fn dist_seg(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 }
 
 impl Shape {
-    /// Ce trebuie să știe fereastra de introducere a textului despre forma
-    /// pe care o editează.
+    /// What the text input window needs to know about the shape it is
+    /// editing.
     pub fn text_of(&self) -> Option<TextInfo<'_>> {
         match self {
             Shape::Text { text, opts, fill, outline, outline_w, .. } => Some(TextInfo {
                 text,
                 opts,
-                // „culoarea secundară": conturul la textul cu contur,
-                // fundalul casetei la textul cu fundal
+                // the "secondary color": the outline for outlined text,
+                // the box background for text with a background
                 color2: if *outline_w > 0.0 { *outline } else { *fill },
                 outline: *outline_w > 0.0,
             }),
@@ -1153,12 +1158,12 @@ impl Shape {
         }
     }
 
-    /// Forma poartă text editabil (casetă de text sau balon)?
+    /// Does the shape carry editable text (text box or balloon)?
     pub fn has_text(&self) -> bool {
         self.text_of().is_some()
     }
 
-    /// Scrie înapoi rezultatul ferestrei de text.
+    /// Writes back the result of the text window.
     pub fn set_text(&mut self, s: String, o: TextOpts, c2: Color32) {
         match self {
             Shape::Text { text, opts, fill, outline, outline_w, .. } => {
@@ -1179,11 +1184,11 @@ impl Shape {
         }
     }
 
-    /// Aduce dreptunghiul formei la forma normală (`min` sus-stânga).
-    /// Tragerea de la dreapta la stânga sau de jos în sus lasă `max < min`, iar
-    /// variantele care folosesc `rect` direct n-ar mai desena nimic
-    /// (`is_positive()` e fals). O chemăm la commit, nu în `update_draft`:
-    /// acolo `min` e ancora și trebuie să rămână fixă cât timp tragi.
+    /// Brings the shape's rectangle into normal form (`min` at the top left).
+    /// Dragging right to left or bottom to top leaves `max < min`, and the
+    /// variants that use `rect` directly would no longer draw anything
+    /// (`is_positive()` is false). We call it on commit, not in `update_draft`:
+    /// there `min` is the anchor and has to stay fixed while you drag.
     pub fn normalize(&mut self) {
         match self {
             Shape::Rect { rect, .. }
@@ -1213,14 +1218,14 @@ impl Shape {
             | Shape::Magnify { rect, .. }
             | Shape::Img { rect, .. }
             | Shape::Text { rect, .. } => Rect::from_two_pos(rect.min, rect.max),
-            // balonul: caseta plus vârful cozii, ca selecția să le cuprindă pe amândouă
+            // the balloon: the box plus the tail's tip, so the selection covers both
             Shape::Balloon { rect, tail, .. } => {
                 let mut r = Rect::from_two_pos(rect.min, rect.max);
                 r.extend_with(*tail);
                 r
             }
-            // curba poate ieși ușor din poligonul punctelor, deci luăm chiar
-            // linia frântă desenată
+            // the curve can bulge slightly out of the polygon of its points, so
+            // we take the drawn polyline itself
             Shape::Arrow { from, to, mid, curbat, .. } | Shape::Line { from, to, mid, curbat, .. } => {
                 let mut r = Rect::NOTHING;
                 for q in curve_poly(*from, *to, mid, *curbat) {
@@ -1241,7 +1246,7 @@ impl Shape {
         }
     }
 
-    /// Punctele de control trase cu mouse-ul pentru redimensionare.
+    /// The control points dragged with the mouse to resize.
     pub fn handles(&self) -> Vec<Pos2> {
         match self {
             Shape::Rect { rect, .. }
@@ -1254,13 +1259,13 @@ impl Shape {
             | Shape::Magnify { rect, .. }
             | Shape::Img { rect, .. }
             | Shape::Text { rect, .. } => rect_nodes(*rect),
-            // al nouălea mâner al balonului e vârful cozii, ca `NodePosition::Extra`
+            // the balloon's ninth handle is the tail tip, like `NodePosition::Extra`
             Shape::Balloon { rect, tail, .. } => {
                 let mut v = rect_nodes(*rect);
                 v.push(*tail);
                 v
             }
-            // capătul de plecare, nodurile de curbură, capătul final
+            // the start point, the curve nodes, the end point
             Shape::Arrow { from, to, mid, .. } | Shape::Line { from, to, mid, .. } => {
                 line_pts(*from, *to, mid)
             }
@@ -1280,7 +1285,7 @@ impl Shape {
             | Shape::Magnify { rect, .. }
             | Shape::Img { rect, .. }
             | Shape::Text { rect, .. } => *rect = resize(*rect, idx, p),
-            // vârful cozii se mută independent de casetă
+            // the tail's tip moves independently of the box
             Shape::Balloon { rect, tail, .. } => {
                 if idx >= 8 {
                     *tail = p;
@@ -1288,7 +1293,7 @@ impl Shape {
                     *rect = resize(*rect, idx, p);
                 }
             }
-            // tragerea unui nod din mijloc curbează linia pe veci, ca în ShareX
+            // dragging a middle node curves the line for good, as in ShareX
             Shape::Arrow { from, to, mid, curbat, .. } | Shape::Line { from, to, mid, curbat, .. } => {
                 if idx == 0 {
                     *from = p;
@@ -1336,8 +1341,8 @@ impl Shape {
         }
     }
 
-    /// Înmulțește toate coordonatele cu `k`. Folosită la redimensionarea
-    /// imaginii, ca formele să rămână peste aceleași locuri din poză.
+    /// Multiplies all coordinates by `k`. Used when resizing the image, so the
+    /// shapes stay over the same spots in the picture.
     pub fn scale(&mut self, k: Vec2) {
         let pt = |q: Pos2| Pos2::new(q.x * k.x, q.y * k.y);
         let rc = |b: Rect| Rect::from_min_max(pt(b.min), pt(b.max));
@@ -1390,7 +1395,7 @@ impl Shape {
             | Shape::Magnify { rect, .. }
             | Shape::Img { rect, .. }
             | Shape::Text { rect, .. } => Rect::from_two_pos(rect.min, rect.max).contains(p),
-            // balonul: interiorul casetei sau al triunghiului cozii
+            // the balloon: the inside of the box or of the tail triangle
             Shape::Balloon { rect, tail, .. } => {
                 if Rect::from_two_pos(rect.min, rect.max).contains(p) {
                     return true;
@@ -1408,7 +1413,7 @@ impl Shape {
                 }
                 (n - 1.0).abs() * rx.min(ry) <= tol.max(*width)
             }
-            // pe o linie curbată nimerirea urmează curba, nu coarda
+            // on a curved line the hit test follows the curve, not the chord
             Shape::Arrow { from, to, mid, curbat, width, .. }
             | Shape::Line { from, to, mid, curbat, width, .. } => curve_poly(*from, *to, mid, *curbat)
                 .windows(2)
