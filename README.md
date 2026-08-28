@@ -15,6 +15,9 @@ alegi o regiune de pe ecran, se deschide editorul, imaginea e deja în clipboard
   text cu contur, text cu fundal, balon de dialog, numărător de pași, lupă,
   imagine din fișier, imagine din ecran, sticker, cursor, gumă inteligentă,
   blur, pixelare, evidențiere, reflector, decupare, tăiere.
+- **Fereastră de alegere a stickerelor** ca în ShareX: pachete (subfoldere),
+  căutare pe calea întreagă, grilă de miniaturi încărcate leneș și mărimea
+  aleasă, care e și mărimea la care se inserează stickerul.
 - **Fereastră de introducere a textului** ca în ShareX: familie de font din sistem,
   mărime, culoare, culoare secundară, bold / italic / subliniat, aliniere pe ambele axe.
   `Enter` = OK, `Ctrl+Enter` = rând nou, `Esc` = renunță.
@@ -46,8 +49,14 @@ sxr <fișier>     # deschide direct o imagine existentă
 
 Practic se leagă de o scurtătură globală (de exemplu `Ctrl+Print`).
 
-Stickerele se citesc din `~/.local/share/sxr/stickers/` — pui acolo fișiere PNG
-și apar în unealta de stickere.
+Stickerele se citesc din `~/.local/share/sxr/stickers/` — pui acolo imagini
+(`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`) și apar în unealta de stickere.
+Fiecare subfolder e un pachet; fișierele lăsate direct în rădăcină formează
+pachetul „All stickers". Unealta deschide o fereastră proprie, ca `StickerForm`
+din ShareX: căutare, lista de pachete, buton spre folder și mărimea stickerului
+(16–256, din 16 în 16), ținută minte împreună cu pachetul ales. Clic pe o
+miniatură — sau `Enter`, care ia primul rezultat al căutării — inserează
+stickerul în punctul de clic; `Esc` renunță.
 
 ## Relația cu ShareX
 

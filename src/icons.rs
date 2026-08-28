@@ -37,6 +37,7 @@ icons![
     "table-delete-column",
     "layer--pencil",
     "wrench-screwdriver",
+    "gear",
     "image--pencil",
     "tick",
     "disk-black",

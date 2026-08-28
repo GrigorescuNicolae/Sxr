@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -142,6 +143,211 @@ pub fn balloon_shot(dir: &str) -> Result<()> {
     let png = render::compose_opts(&bg, std::slice::from_ref(&s), false)?;
     std::fs::write(&path, &png).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
     println!("scris {path}");
+    Ok(())
+}
+
+/// Un PNG plin, scris pe loc pentru modurile de verificare: stickerele omului
+/// nu se ating niciodată, nici măcar la citire.
+fn write_test_png(path: &Path, side: u32, rgb: [u8; 3]) -> Result<()> {
+    let img = RgbaImage::from_pixel(side, side, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+    img.save(path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Arborele de probă al modurilor de verificare: rădăcina cu fișiere libere,
+/// plus două pachete. Se reface de la zero la fiecare rulare.
+fn make_test_stickers(root: &Path, loose: &[&str]) -> Result<()> {
+    let _ = std::fs::remove_dir_all(root);
+    std::fs::create_dir_all(root)?;
+    for (i, n) in loose.iter().enumerate() {
+        let c = [
+            (40 + i * 37 % 200) as u8,
+            (200 - i * 53 % 180) as u8,
+            (90 + i * 71 % 160) as u8,
+        ];
+        write_test_png(&root.join(n), 96, c)?;
+    }
+    for (pack, names) in [("animale", ["pisica.png", "caine.png"]), ("simboluri", ["bifa.png", "cruce.png"])] {
+        let dir = root.join(pack);
+        std::fs::create_dir_all(&dir)?;
+        for (i, n) in names.iter().enumerate() {
+            write_test_png(&dir.join(n), 96, [220, (60 + i * 90) as u8, 40])?;
+        }
+    }
+    Ok(())
+}
+
+/// Randare neinteractivă a ferestrei de stickere (`--sticker-shot`), pe un
+/// folder de probă din directorul temporar. Configurarea e și ea redirijată
+/// spre `/tmp`, ca imaginea să iasă la fel indiferent ce mărime a ales omul
+/// ultima dată — și ca fișierul lui să rămână neatins.
+pub fn sticker_shot(path: &str) -> Result<()> {
+    let tmp = std::env::temp_dir().join("sxr-sticker-shot");
+    let cfg = tmp.join("config-home");
+    std::fs::create_dir_all(&cfg)?;
+    // SIGURANTA: inca nu exista alte fire care sa citeasca mediul
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", &cfg) };
+    let root = tmp.join("stickers");
+    make_test_stickers(
+        &root,
+        &[
+            "blobbanhammer.png",
+            "blobconcernedreading.png",
+            "bifa.png",
+            "atentie.png",
+            "foc.png",
+            "girofar.png",
+            "inima.png",
+            "ok.png",
+            "ras.png",
+            "stea.png",
+            "trist.png",
+            "victorie.png",
+        ],
+    )?;
+    shot(path, 700, 560, move |ctx, ed| {
+        if ed.dialog.is_none() {
+            ed.open_sticker(root.clone(), Pos2::new(10.0, 10.0), false);
+        }
+        let mut acts = Vec::new();
+        ed.sticker_dialog_ui(ctx, &mut acts);
+    })
+}
+
+/// Verificare neinteractivă a ferestrei de stickere (`--sticker-flow`): trece
+/// prin enumerarea pachetelor, filtrare, Enter, mărimea ținută minte și
+/// inserarea propriu-zisă, fără să deschidă nicio fereastră. Configurarea
+/// merge într-un director temporar, deci fișierul omului nu e atins.
+pub fn sticker_flow_test() -> Result<()> {
+    let tmp = std::env::temp_dir().join("sxr-sticker-flow");
+    let cfg = tmp.join("config-home");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&cfg)?;
+    // SIGURANTA: inca nu exista alte fire care sa citeasca mediul
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", &cfg) };
+    println!("configurare de proba: {}", config::path().display());
+    let root = tmp.join("stickers");
+    make_test_stickers(&root, &["arici.png", "balena.png", "Zebra.png"])?;
+    let mut fail = 0usize;
+
+    // 1. pachetele: radacina prima, apoi subfolderele in ordine alfabetica
+    let packs = sticker_packs(&root);
+    let names: Vec<&str> = packs.iter().map(|(n, _)| n.as_str()).collect();
+    let ok = names == [t(Msg::StickerAllPacks), "animale", "simboluri"];
+    ck(&mut fail, ok, format!("1 pachete: {names:?}"));
+
+    // 2. radacina fara fisiere libere nu mai e pachet
+    let gol = tmp.join("stickers-gol");
+    std::fs::create_dir_all(gol.join("unu"))?;
+    write_test_png(&gol.join("unu").join("x.png"), 32, [10, 20, 30])?;
+    let pg = sticker_packs(&gol);
+    let p2: Vec<&str> = pg.iter().map(|(n, _)| n.as_str()).collect();
+    let ok = p2 == ["unu"];
+    ck(&mut fail, ok, format!("2 radacina fara fisiere libere nu e pachet: {p2:?}"));
+
+    // 3. fisierele unui pachet, sortate
+    let files = sticker_files(&root);
+    ck(&mut fail, files.len() == 3, format!("3 radacina are {} fisiere", files.len()));
+    let sortate = files.windows(2).all(|w| w[0] <= w[1]);
+    ck(&mut fail, sortate, format!("3 lista e sortata: {sortate}"));
+
+    // 4. filtrarea: pe calea intreaga, fara diferenta de majuscule
+    let animale = sticker_files(&root.join("animale"));
+    let h = sticker_filter(&animale, "PIS");
+    let ok = h.len() == 1 && animale[h[0]].ends_with("pisica.png");
+    ck(&mut fail, ok, format!("4 PIS gaseste pisica: {} rezultate", h.len()));
+    let h = sticker_filter(&animale, "animale");
+    ck(&mut fail, h.len() == 2, format!("4 numele pachetului ia tot pachetul: {}", h.len()));
+    let h = sticker_filter(&animale, "zzz");
+    ck(&mut fail, h.is_empty(), format!("4 cautare fara rezultat: {}", h.len()));
+    let h = sticker_filter(&animale, "   ");
+    ck(&mut fail, h.len() == 2, format!("4 cautare goala arata tot: {}", h.len()));
+
+    // 5. dupa fiecare tasta, primul rezultat e preselectat, iar Enter il ia
+    let ctx = egui::Context::default();
+    let mut ed = Editor::new(&ctx, RgbaImage::new(400, 300));
+    ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
+    let d = ed.dialog.as_mut().expect("fereastra de stickere");
+    d.sticker.sel = 2;
+    d.sticker.query = "BALE".into();
+    d.sticker.refilter();
+    let sd = &d.sticker;
+    let ok = sd.hits.len() == 1 && sd.sel == 0;
+    ck(&mut fail, ok, format!("5 preselectie: {} rezultate, sel={}", sd.hits.len(), sd.sel));
+    let first = sd.first_hit();
+    let ok = first.as_deref().is_some_and(|p| p.ends_with("balena.png"));
+    ck(&mut fail, ok, format!("5 Enter ia primul rezultat: {first:?}"));
+
+    // 6. marimea: se salveaza si se reciteste; ce iese din 16..=256 cade pe 64
+    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    d.sticker.size = 128.0;
+    d.sticker.picked = first.clone();
+    ed.sticker_done(&ctx, d.sticker, false);
+    let v = sticker_size_saved();
+    ck(&mut fail, v == 128.0, format!("6 marimea salvata se reciteste: {v}"));
+    for (scris, astept) in [("999", 64.0), ("0", 64.0), ("abc", 64.0), ("16", 16.0), ("256", 256.0)] {
+        config::set(K_STICKER_SIZE, scris);
+        let v = sticker_size_saved();
+        ck(&mut fail, v == astept, format!("6 marimea scrisa {scris} -> {v} (asteptat {astept})"));
+    }
+    ck(&mut fail, ed.shapes.is_empty(), format!("6 renuntarea nu insereaza: {} forme", ed.shapes.len()));
+
+    // 7. pachetul se tine minte dupa nume, nu dupa indice
+    config::set(K_STICKER_PACK, "simboluri");
+    ed.open_sticker(root.clone(), Pos2::ZERO, false);
+    let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
+    ck(&mut fail, i == 2, format!("7 pachetul salvat e ales: {i}"));
+    config::set(K_STICKER_PACK, "un-folder-sters");
+    ed.open_sticker(root.clone(), Pos2::ZERO, false);
+    let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
+    ck(&mut fail, i == 0, format!("7 pachetul disparut cade pe primul: {i}"));
+
+    // 8. alegerea insereaza un patrat de latura ceruta, in punctul de clic
+    ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
+    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    d.sticker.size = 48.0;
+    d.sticker.picked = Some(root.join("arici.png"));
+    ed.sticker_done(&ctx, d.sticker, true);
+    ck(&mut fail, ed.shapes.len() == 1, format!("8 dupa alegere: {} forme", ed.shapes.len()));
+    match ed.shapes.first() {
+        Some(Shape::Img { rect, .. }) => {
+            let ok = (rect.min.x - 40.0).abs() < 0.01
+                && (rect.min.y - 50.0).abs() < 0.01
+                && (rect.width() - 48.0).abs() < 0.01
+                && (rect.height() - 48.0).abs() < 0.01;
+            ck(&mut fail, ok, format!("8 patrat de 48 in punctul de clic: {rect:?}"));
+        }
+        _ => ck(&mut fail, false, "8 forma inserata nu e imagine".into()),
+    }
+
+    // 9. cererea din meniu recentreaza forma pe imagine
+    ed.delete_all();
+    ed.open_sticker(root.clone(), Pos2::new(0.0, 0.0), true);
+    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    d.sticker.size = 64.0;
+    d.sticker.picked = Some(root.join("arici.png"));
+    ed.sticker_done(&ctx, d.sticker, true);
+    match ed.shapes.first() {
+        Some(Shape::Img { rect, .. }) => {
+            let c = rect.center();
+            let ok = (c.x - 200.0).abs() < 0.01 && (c.y - 150.0).abs() < 0.01;
+            ck(&mut fail, ok, format!("9 centrat pe imagine: {c:?}"));
+        }
+        _ => ck(&mut fail, false, "9 nicio forma dupa cererea din meniu".into()),
+    }
+
+    // 10. renuntarea, cu un sticker deja sub cursor, nu insereaza nimic
+    ed.delete_all();
+    ed.open_sticker(root.clone(), Pos2::new(10.0, 10.0), false);
+    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    d.sticker.picked = Some(root.join("arici.png"));
+    ed.sticker_done(&ctx, d.sticker, false);
+    ck(&mut fail, ed.shapes.is_empty(), format!("10 renuntare: {} forme", ed.shapes.len()));
+
+    if fail > 0 {
+        anyhow::bail!("{fail} verificari esuate");
+    }
+    println!("totul e bine");
     Ok(())
 }
 
@@ -433,6 +639,8 @@ enum DlgKind {
     Canvas,
     /// Fereastra de introducere a textului (ShareX: TextDrawingInputBox).
     Text,
+    /// Fereastra de alegere a stickerelor (ShareX: StickerForm).
+    Sticker,
 }
 
 /// Starea ferestrei de text. Câmpurile numerice de mai jos nu o privesc.
@@ -452,6 +660,72 @@ struct TextDlg {
     focus: bool,
 }
 
+/// Starea ferestrei de alegere a stickerelor. Trăiește exact cât fereastra:
+/// lista de fișiere și miniaturile urcate în GPU pleacă odată cu ea.
+#[derive(Default)]
+struct StickerDlg {
+    /// Punctul de clic: acolo ajunge colțul din stânga-sus al stickerului.
+    at: Pos2,
+    /// Cererea vine din meniu, nu de la un clic pe pânză: forma se recentrează.
+    center: bool,
+    /// Rădăcina folosită — `stickers_dir()` în aplicație, alta la verificări.
+    root: PathBuf,
+    /// Pachetele găsite: (nume afișat, folder), rădăcina prima.
+    packs: Vec<(String, PathBuf)>,
+    /// Pachetul ales, indice în `packs`.
+    pack: usize,
+    /// Fișierele pachetului ales. Se citesc o dată, la deschidere și la
+    /// schimbarea pachetului; filtrarea lucrează pe lista asta, nu pe disc.
+    files: Vec<PathBuf>,
+    /// Indici în `files`, în ordinea afișării în grilă.
+    hits: Vec<usize>,
+    query: String,
+    /// Selecția, ca indice în `hits`.
+    sel: usize,
+    /// Latura miniaturii, care e și latura la care se inserează stickerul.
+    size: f32,
+    /// Miniaturile deja urcate. `None` = fișier care nu se decodează.
+    thumbs: HashMap<PathBuf, Option<TextureHandle>>,
+    /// Primul cadru: focalizarea intră în câmpul de căutare.
+    focus: bool,
+    /// Stickerul ales; fără el, închiderea nu inserează nimic.
+    picked: Option<PathBuf>,
+}
+
+impl StickerDlg {
+    /// Citește pachetul ales și reface lista filtrată.
+    fn reload(&mut self) {
+        self.files = self
+            .packs
+            .get(self.pack)
+            .map(|(_, p)| sticker_files(p))
+            .unwrap_or_default();
+        // miniaturile vechi sunt ale altui pachet: nu mai au ce căuta în GPU
+        self.thumbs.clear();
+        self.refilter();
+    }
+
+    /// Reface lista filtrată. Primul rezultat rămâne preselectat, ca în ShareX:
+    /// după fiecare tastă, Enter are deja pe ce cădea.
+    fn refilter(&mut self) {
+        self.hits = sticker_filter(&self.files, &self.query);
+        self.sel = 0;
+    }
+
+    /// Primul rezultat al căutării — ce alege Enter.
+    fn first_hit(&self) -> Option<PathBuf> {
+        self.files.get(*self.hits.first()?).cloned()
+    }
+
+    /// Folderul pachetului ales, cel pe care îl deschide butonul cu roată.
+    fn pack_dir(&self) -> PathBuf {
+        self.packs
+            .get(self.pack)
+            .map(|(_, p)| p.clone())
+            .unwrap_or_else(|| self.root.clone())
+    }
+}
+
 /// Dialogul propriu: kdialog n-are nici câmpuri numerice, nici fereastră de text.
 struct Dialog {
     kind: DlgKind,
@@ -468,6 +742,7 @@ struct Dialog {
     last_w: u32,
     last_h: u32,
     text: TextDlg,
+    sticker: StickerDlg,
 }
 
 impl Dialog {
@@ -482,6 +757,7 @@ impl Dialog {
             last_w: w,
             last_h: h,
             text: TextDlg::default(),
+            sticker: StickerDlg::default(),
         }
     }
 }
@@ -641,6 +917,138 @@ fn stickers_dir() -> PathBuf {
         .join("stickers")
 }
 
+/// Extensiile citite ca stickere: exact formatele pe care `image` le decodează
+/// din configurația noastră implicită.
+const STICKER_EXT: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+
+/// Cheile ținute minte între sesiuni pentru fereastra de stickere.
+const K_STICKER_SIZE: &str = "sticker_size";
+const K_STICKER_PACK: &str = "sticker_pack";
+
+/// Limitele câmpului `Size:` din `StickerForm`: de la 16 la 256 din 16 în 16,
+/// implicit 64. Aceeași valoare e și latura miniaturii, și latura stickerului
+/// inserat — în original raportul e 1:1, deci un pătrat.
+const STICKER_MIN: f32 = 16.0;
+const STICKER_MAX: f32 = 256.0;
+const STICKER_STEP: f32 = 16.0;
+const STICKER_DEF: f32 = 64.0;
+
+/// Mărimea salvată. O valoare stricată sau ieșită din limite nu e o eroare de
+/// arătat nimănui: pur și simplu revenim la implicita.
+fn sticker_size_saved() -> f32 {
+    config::get(K_STICKER_SIZE)
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .filter(|v| (STICKER_MIN..=STICKER_MAX).contains(v))
+        .unwrap_or(STICKER_DEF)
+}
+
+fn is_sticker(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| STICKER_EXT.contains(&e.to_ascii_lowercase().as_str()))
+        && p.is_file()
+}
+
+/// Imaginile dintr-un singur folder, fără coborâre în subfoldere. Sortate,
+/// altfel grila ar arăta altfel la fiecare deschidere: `read_dir` nu promite
+/// nicio ordine.
+fn sticker_files(dir: &Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| is_sticker(p))
+        .collect();
+    v.sort();
+    v
+}
+
+/// Pachetele de stickere. În ShareX un pachet e un folder, deci fiecare
+/// subfolder direct e unul. Rădăcina intră și ea în listă — prima —, dar numai
+/// dacă are fișiere libere: acolo ajung stickerele cât timp nimeni nu le-a
+/// grupat încă, și n-ar avea cum să fie altfel de ajuns la ele.
+fn sticker_packs(root: &Path) -> Vec<(String, PathBuf)> {
+    let mut subs: Vec<(String, PathBuf)> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter_map(|p| Some((p.file_name()?.to_string_lossy().into_owned(), p)))
+        .collect();
+    subs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    let mut out = Vec::with_capacity(subs.len() + 1);
+    if !sticker_files(root).is_empty() {
+        out.push((t(Msg::StickerAllPacks).to_owned(), root.to_owned()));
+    }
+    out.append(&mut subs);
+    out
+}
+
+/// Indicii fișierelor care trec de căutare. ShareX caută în calea întreagă, nu
+/// doar în numele fișierului, deci numele unui pachet găsește tot ce e în el.
+/// Fără diferență între majuscule și minuscule.
+fn sticker_filter(files: &[PathBuf], q: &str) -> Vec<usize> {
+    let q = q.trim().to_lowercase();
+    files
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| q.is_empty() || p.to_string_lossy().to_lowercase().contains(&q))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Miniatura unui fișier, decodată o singură dată. `None` = nu se decodează;
+/// îl sărim tăcut, ca un fișier stricat să nu oprească grila. Micșorarea se
+/// face pe CPU, înainte de urcare: la 64 de puncte n-are rost să ținem în GPU
+/// un PNG de 512. Nu mărim niciodată: un sticker mic rămâne cât e și se
+/// întinde abia la desen.
+fn thumb(
+    ctx: &egui::Context,
+    cache: &mut HashMap<PathBuf, Option<TextureHandle>>,
+    p: &Path,
+    side: f32,
+) -> Option<TextureHandle> {
+    if let Some(v) = cache.get(p) {
+        return v.clone();
+    }
+    let tex = image::open(p).ok().map(|i| {
+        let img = i.to_rgba8();
+        let (w, h) = (img.width() as f32, img.height() as f32);
+        let k = (side / w).min(side / h).min(1.0);
+        let small = if k < 1.0 {
+            resize_img(&img, (w * k).round() as u32, (h * k).round() as u32)
+        } else {
+            img
+        };
+        ctx.load_texture(
+            format!("sxr-thumb-{}", p.display()),
+            to_color_image(&small),
+            egui::TextureOptions::LINEAR,
+        )
+    });
+    cache.insert(p.to_owned(), tex.clone());
+    tex
+}
+
+/// Deschide un folder în managerul de fișiere. `xdg-open` pleacă în fundal
+/// dintr-un `sh` care iese imediat, deci interfața nu stă după el și nu rămâne
+/// nici proces-zombi de așteptat. `command -v` întâi, altfel un `xdg-open`
+/// lipsă ar trece drept reușită: shell-ul iese cu zero oricum, treaba pusă în
+/// fundal fiind a lui, nu a noastră.
+fn open_dir(dir: &Path) -> anyhow::Result<()> {
+    let st = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(r#"command -v xdg-open >/dev/null || exit 127; xdg-open "$0" >/dev/null 2>&1 &"#)
+        .arg(dir)
+        .status()?;
+    if !st.success() {
+        anyhow::bail!("xdg-open: {st}");
+    }
+    Ok(())
+}
+
 /// Dialogul nativ KDE de deschidere. `None` dacă utilizatorul anulează sau
 /// dacă `kdialog` lipsește — în ambele cazuri pur și simplu nu se întâmplă nimic.
 fn pick_image(dir: &Path) -> Option<PathBuf> {
@@ -694,6 +1102,22 @@ const TDLG_W: f32 = 534.0;
 const TDLG_WIN_W: f32 = 547.0;
 const TDLG_WIN_H: f32 = 421.0;
 
+// ------------------------------------- fereastra de alegere a stickerelor
+
+/// Fereastra la deschidere. `StickerForm` din ShareX se deschide pe o zonă
+/// utilă lată cât intră vreo șapte miniaturi de 64 pe un rând; luăm asta ca
+/// măsură, nu cifra exactă a designerului, fiindcă la noi bara de sus e scrisă
+/// cu alt font și ar da alt minim.
+const SDLG_WIN_W: f32 = 620.0;
+const SDLG_WIN_H: f32 = 500.0;
+/// Sub asta bara de sus n-ar mai încăpea pe un rând.
+const SDLG_MIN_W: f32 = 470.0;
+/// Spațiul din jurul unei miniaturi, în celula ei.
+const SDLG_PAD: f32 = 6.0;
+/// Câmpul de căutare (`txtSearch`) și lista de pachete (`cbStickerPacks`).
+const SDLG_SEARCH_W: f32 = 130.0;
+const SDLG_PACK_W: f32 = 150.0;
+
 /// Butonul pătrat de 24x24 folosit de toate uneltele cu pictogramă.
 fn square_button<'a>() -> egui::Button<'a> {
     egui::Button::new("").min_size(Vec2::splat(TDLG_BTN))
@@ -715,14 +1139,16 @@ fn style_toggle(ui: &mut egui::Ui, on: &mut bool, letter: egui::RichText, tip: M
 
 /// `NumericUpDown` din WinForms: egui n-are așa ceva, deci lipim un `DragValue`
 /// îngust de două butoane mici cu săgeți, într-o coloană fără spațiere.
-fn num_up_down(ui: &mut egui::Ui, v: &mut f32) {
+/// `step` e cât mută o săgeată; când e mai mare decât 1, valoarea se și
+/// rotunjește la el, ca `NumericUpDown.Increment` din original.
+fn num_up_down(ui: &mut egui::Ui, v: &mut f32, lo: f32, hi: f32, step: f32) {
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         ui.horizontal(|ui| {
-            // `nudTextSize`: minim 5, maxim 300, afișat ca întreg
+            // textul stă centrat: `DragValue` îl așază ca pe eticheta unui buton
             let dv = egui::DragValue::new(v)
-                .range(5.0..=300.0)
-                .speed(0.2)
+                .range(lo..=hi)
+                .speed(step.max(1.0) * 0.2)
                 .fixed_decimals(0);
             ui.add_sized([TDLG_NUM_W, TDLG_BTN], dv);
 
@@ -748,8 +1174,12 @@ fn num_up_down(ui: &mut egui::Ui, v: &mut f32) {
             }
             if resp.clicked() {
                 let up = resp.interact_pointer_pos().is_some_and(|p| up_r.contains(p));
-                *v = if up { (*v + 1.0).min(300.0) } else { (*v - 1.0).max(5.0) };
+                *v = if up { *v + step } else { *v - step };
             }
+            if step > 1.0 {
+                *v = (*v / step).round() * step;
+            }
+            *v = v.clamp(lo, hi);
         });
     });
 }
@@ -1229,14 +1659,26 @@ impl Editor {
     /// în imaginea de fundal.
     fn stamp(&mut self, ctx: &egui::Context, at: Pos2, img: Arc<RgbaImage>) {
         let (iw, ih) = (img.width() as f32, img.height() as f32);
+        let k = (self.img.width() as f32 / iw.max(1.0))
+            .min(self.img.height() as f32 / ih.max(1.0))
+            .min(1.0);
+        self.stamp_rect(ctx, Rect::from_min_size(at, Vec2::new(iw * k, ih * k)), img);
+    }
+
+    /// Inserează o imagine într-un pătrat cu latura dată, cu colțul în punctul
+    /// de clic: drumul stickerelor, unde mărimea aleasă în fereastră bate
+    /// dimensiunea nativă a fișierului.
+    fn stamp_sized(&mut self, ctx: &egui::Context, at: Pos2, img: Arc<RgbaImage>, side: f32) {
+        self.stamp_rect(ctx, Rect::from_min_size(at, Vec2::splat(side)), img);
+    }
+
+    /// Partea comună: urcă textura, adaugă forma și trece pe unealta de selecție.
+    fn stamp_rect(&mut self, ctx: &egui::Context, rect: Rect, img: Arc<RgbaImage>) {
+        let (iw, ih) = (img.width() as f32, img.height() as f32);
         if iw < 1.0 || ih < 1.0 {
             self.status = t(Msg::StEmptyImage).into();
             return;
         }
-        let k = (self.img.width() as f32 / iw)
-            .min(self.img.height() as f32 / ih)
-            .min(1.0);
-        let rect = Rect::from_min_size(at, Vec2::new(iw * k, ih * k));
         self.img_seq += 1;
         let tex = ctx.load_texture(
             format!("sxr-img-{}", self.img_seq),
@@ -1287,17 +1729,15 @@ impl Editor {
                     self.status = i18n::cannot_create(&dir.display().to_string(), &e.to_string());
                     return;
                 }
-                // dialogul pe un director gol n-ar avea ce arăta
-                let empty = std::fs::read_dir(&dir)
-                    .map(|it| !it.flatten().any(|e| e.path().is_file()))
-                    .unwrap_or(true);
-                if empty {
+                // fereastra pe un folder gol n-ar avea ce arăta
+                let packs = sticker_packs(&dir);
+                if packs.is_empty() {
                     self.status = i18n::put_png_files_in(&dir.display().to_string());
                     return;
                 }
-                if let Some(p) = pick_image(&dir) {
-                    self.stamp_file(ctx, at, &p);
-                }
+                // stickerul se inserează abia după ce se alege unul: fereastra
+                // e a noastră, deci nu blochează firul de interfață ca kdialog
+                self.open_sticker(dir, at, false);
             }
             Tool::Cursor => {
                 // vârful săgeții e chiar pixelul din stânga-sus al imaginii,
@@ -1329,6 +1769,13 @@ impl Editor {
             // captura vine abia la cadrul următor; marcăm centrarea acolo
             if let Some(Pending::Screen { center, .. }) = self.pending.as_mut() {
                 *center = true;
+            }
+        } else if t == Tool::Sticker {
+            self.stamp_tool(ctx, at);
+            // alegerea vine abia peste câteva cadre, din fereastra de stickere;
+            // centrarea o marcăm acolo, ca la captura de ecran
+            if let Some(d) = self.dialog.as_mut() {
+                d.sticker.center = true;
             }
         } else {
             let n = self.shapes.len();
@@ -1690,12 +2137,16 @@ impl Editor {
             self.text_dialog_ui(ctx, acts);
             return;
         }
+        if self.dialog.as_ref().is_some_and(|d| d.kind == DlgKind::Sticker) {
+            self.sticker_dialog_ui(ctx, acts);
+            return;
+        }
         let Some(d) = self.dialog.as_mut() else { return };
         let (title, ok_text) = match d.kind {
             DlgKind::New => (t(Msg::DlgNewTitle), t(Msg::BtnCreate)),
             DlgKind::Size => (t(Msg::DlgSizeTitle), t(Msg::BtnOk)),
             DlgKind::Canvas => (t(Msg::DlgCanvasTitle), t(Msg::BtnOk)),
-            DlgKind::Text => return,
+            DlgKind::Text | DlgKind::Sticker => return,
         };
         let (mut ok, mut cancel) = (false, false);
         egui::Window::new(title)
@@ -1724,7 +2175,7 @@ impl Editor {
                             ui.label(t(Msg::LblCanvasFill));
                             ui.color_edit_button_srgba(&mut d.color);
                         }
-                        DlgKind::Text => {}
+                        DlgKind::Text | DlgKind::Sticker => {}
                     }
                     ui.end_row();
                 });
@@ -1793,7 +2244,8 @@ impl Editor {
                             }
                         });
                     ui.label(t(Msg::LblTextSize));
-                    num_up_down(ui, &mut td.opts.size);
+                    // `nudTextSize`: minim 5, maxim 300, din 1 în 1
+                    num_up_down(ui, &mut td.opts.size, 5.0, 300.0, 1.0);
                     ui.color_edit_button_srgba(&mut td.opts.color)
                         .on_hover_text(t(Msg::TipTextColor));
                     // `btnGradient` stă tot aici, dar `Visible` îl aprinde numai
@@ -1880,6 +2332,252 @@ impl Editor {
         }
     }
 
+    // ------------------------------------- fereastra de alegere a stickerelor
+
+    /// Deschide fereastra de alegere a stickerelor peste pânză. `at` = punctul
+    /// în care ajunge stickerul, `center` = cererea vine din meniu.
+    fn open_sticker(&mut self, root: PathBuf, at: Pos2, center: bool) {
+        let (w, h) = self.img.dimensions();
+        let mut d = Dialog::new(DlgKind::Sticker, w, h);
+        let packs = sticker_packs(&root);
+        // pachetul se ține minte după nume, nu după poziție: folderele apar și
+        // dispar între sesiuni, deci un indice salvat ar arăta cu totul altceva
+        let want = config::get(K_STICKER_PACK).unwrap_or_default();
+        let pack = packs.iter().position(|(n, _)| *n == want).unwrap_or(0);
+        d.sticker = StickerDlg {
+            at,
+            center,
+            root,
+            packs,
+            pack,
+            size: sticker_size_saved(),
+            focus: true,
+            ..Default::default()
+        };
+        d.sticker.reload();
+        self.dialog = Some(d);
+        self.sel = None;
+    }
+
+    /// Închiderea ferestrei. `ok` = s-a ales un sticker (clic sau Enter).
+    fn sticker_done(&mut self, ctx: &egui::Context, sd: StickerDlg, ok: bool) {
+        // ca la fereastra de text: alegerile din bară rămân implicitele de data
+        // viitoare, indiferent de butonul cu care s-a închis. O singură scriere
+        // pentru amândouă, ca fișierul să nu fie rescris de două ori.
+        let mut c = config::Config::load();
+        c.set(K_STICKER_SIZE, &format!("{}", sd.size as u32));
+        if let Some((n, _)) = sd.packs.get(sd.pack) {
+            c.set(K_STICKER_PACK, n);
+        }
+        let _ = c.save();
+
+        if !ok {
+            return;
+        }
+        let Some(p) = sd.picked.as_ref() else { return };
+        match image::open(p) {
+            Ok(i) => {
+                let n = self.shapes.len();
+                self.stamp_sized(ctx, sd.at, Arc::new(i.to_rgba8()), sd.size);
+                if sd.center && self.shapes.len() > n {
+                    self.center_last();
+                }
+            }
+            Err(e) => self.status = i18n::cannot_open(&p.display().to_string(), &e.to_string()),
+        }
+    }
+
+    /// Fereastra de alegere a stickerelor, după `StickerForm`: sus, pe un singur
+    /// rând, `Search:` cu câmpul lui, `Stickers:` cu lista de pachete, butonul
+    /// cu roată și `Size:`; dedesubt, grila derulabilă de miniaturi pătrate, cu
+    /// numele fișierului scris sub fiecare și trunchiat cu „…". Clicul pe o
+    /// miniatură alege și închide pe loc — original n-are buton de OK.
+    fn sticker_dialog_ui(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
+        let icons = self.icons.clone();
+        let Some(d) = self.dialog.as_mut() else { return };
+        let sd = &mut d.sticker;
+        let (mut reload, mut refilter, mut folder) = (false, false, false);
+        let mut chosen: Option<PathBuf> = None;
+
+        egui::Window::new(t(Msg::DlgStickerTitle))
+            .collapsible(false)
+            .resizable(true)
+            .default_size([SDLG_WIN_W, SDLG_WIN_H])
+            .min_size([SDLG_MIN_W, 260.0])
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+                ui.spacing_mut().interact_size = Vec2::splat(TDLG_BTN);
+                // ---- bara de sus: un singur rând, ca în original
+                ui.horizontal(|ui| {
+                    // etichetele au `Margin = Padding(2, 1, 0, 2)`, adică stau
+                    // lipite de controlul din dreapta lor
+                    ui.label(t(Msg::LblSearch));
+                    // `txtSearch` are `BorderStyle.FixedSingle`: un chenar de
+                    // 1px, la fel și când e focalizat. egui pune altfel un inel
+                    // gros și deschis, care ar sări în ochi mai tare decât grila.
+                    let v = &mut ui.visuals_mut();
+                    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, SEL_BORDER);
+                    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, Color32::from_gray(0x5A));
+                    v.selection.stroke = egui::Stroke::new(1.0, Color32::from_gray(0x7A));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut sd.query)
+                            .desired_width(SDLG_SEARCH_W)
+                            .margin(egui::Margin::symmetric(4, 2)),
+                    );
+                    if r.changed() {
+                        refilter = true;
+                    }
+                    if sd.focus {
+                        sd.focus = false;
+                        r.request_focus();
+                    }
+                    ui.label(t(Msg::LblStickerPack));
+                    let cur = sd.packs.get(sd.pack).map(|(n, _)| n.clone()).unwrap_or_default();
+                    // `DropDownList`: se alege din listă, nu se scrie în ea
+                    egui::ComboBox::from_id_salt("sxr-sticker-pack")
+                        .width(SDLG_PACK_W)
+                        .selected_text(cur)
+                        .show_ui(ui, |ui| {
+                            for i in 0..sd.packs.len() {
+                                let on = sd.pack == i;
+                                if ui.selectable_label(on, &sd.packs[i].0).clicked() && !on {
+                                    sd.pack = i;
+                                    reload = true;
+                                }
+                            }
+                        });
+                    // roata: în ShareX deschide managerul de pachete, pe care
+                    // sxr nu-l are — la noi deschide folderul pachetului, adică
+                    // exact locul în care se adaugă și se șterg stickere
+                    let r = ui
+                        .add(egui::Button::image(icons.img("gear")))
+                        .on_hover_text(t(Msg::TipStickerFolder));
+                    folder = r.clicked();
+                    ui.label(t(Msg::LblStickerSize));
+                    let before = sd.size;
+                    num_up_down(ui, &mut sd.size, STICKER_MIN, STICKER_MAX, STICKER_STEP);
+                    if sd.size != before {
+                        // miniaturile sunt urcate la mărimea de dinainte: la
+                        // alta n-ar mai fi nici destul de fine, nici de folos
+                        sd.thumbs.clear();
+                    }
+                });
+                ui.separator();
+
+                // ---- grila: umple restul ferestrei
+                if sd.hits.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.weak(t(Msg::StNoStickerMatch));
+                    });
+                    return;
+                }
+                let line = ui.text_style_height(&egui::TextStyle::Body);
+                let cell = Vec2::new(sd.size + SDLG_PAD * 2.0, sd.size + SDLG_PAD * 2.0 + line);
+                // bara de derulare din dreapta mănâncă și ea din lățime
+                let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin;
+                let cols = (((ui.available_width() - bar) / cell.x).floor() as usize).max(1);
+                let rows = sd.hits.len().div_ceil(cols);
+                let h = ui.available_height().max(cell.y);
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                let ink = ui.visuals().text_color();
+                let StickerDlg { files, hits, thumbs, sel, size, .. } = sd;
+                let side = *size;
+                ui.scope(|ui| {
+                    // rândurile trebuie să vină exact din `cell.y` puncte în
+                    // `cell.y` puncte, altfel `show_rows` desenează alături
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false; 2])
+                        .max_height(h)
+                        .show_rows(ui, cell.y, rows, |ui, range| {
+                            for row in range {
+                                ui.horizontal(|ui| {
+                                    let pt = ui.painter().clone();
+                                    for col in 0..cols {
+                                        let k = row * cols + col;
+                                        let Some(&fi) = hits.get(k) else { break };
+                                        let p = &files[fi];
+                                        let (rect, resp) =
+                                            ui.allocate_exact_size(cell, Sense::click());
+                                        if *sel == k {
+                                            pt.rect(
+                                                rect.shrink(1.0),
+                                                2,
+                                                SEL_BG,
+                                                egui::Stroke::new(1.0, SEL_BORDER),
+                                                egui::StrokeKind::Inside,
+                                            );
+                                        } else if resp.hovered() {
+                                            pt.rect_filled(rect.shrink(1.0), 2, HOVER_BG);
+                                        }
+                                        let box_r = Rect::from_min_size(
+                                            rect.min + Vec2::splat(SDLG_PAD),
+                                            Vec2::splat(side),
+                                        );
+                                        if let Some(tx) = thumb(ui.ctx(), thumbs, p, side) {
+                                            let [tw, th] = tx.size();
+                                            let (tw, th) = (tw as f32, th as f32);
+                                            let z = (side / tw).min(side / th);
+                                            pt.image(
+                                                tx.id(),
+                                                Rect::from_center_size(
+                                                    box_r.center(),
+                                                    Vec2::new(tw * z, th * z),
+                                                ),
+                                                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                                                Color32::WHITE,
+                                            );
+                                        }
+                                        // numele dedesubt, trunchiat cu „…":
+                                        // `max_rows = 1` pune singur caracterul.
+                                        // Fără extensie, ca în ShareX: eticheta
+                                        // ar fi altfel pe jumătate „.png".
+                                        let name = p
+                                            .file_stem()
+                                            .map(|n| n.to_string_lossy().into_owned())
+                                            .unwrap_or_default();
+                                        let mut job = egui::text::LayoutJob::simple_singleline(
+                                            name,
+                                            font.clone(),
+                                            ink,
+                                        );
+                                        job.wrap.max_width = cell.x - 4.0;
+                                        job.wrap.max_rows = 1;
+                                        job.wrap.break_anywhere = true;
+                                        let g = pt.layout_job(job);
+                                        let x = rect.center().x - g.size().x / 2.0;
+                                        pt.galley(egui::pos2(x, box_r.bottom()), g, ink);
+                                        if resp.clicked() {
+                                            *sel = k;
+                                            chosen = Some(p.clone());
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                });
+            });
+
+        if reload {
+            sd.reload();
+        } else if refilter {
+            sd.refilter();
+        }
+        if let Some(p) = chosen {
+            // clicul alege și închide, fără buton de OK
+            sd.picked = Some(p);
+            acts.push(Act::DlgOk);
+        }
+        if folder {
+            let dir = sd.pack_dir();
+            if let Err(e) = open_dir(&dir) {
+                self.status = i18n::cannot_open_folder(&dir.display().to_string(), &format!("{e:#}"));
+            }
+        }
+    }
+
     // ------------------------------------------------------------- ieșire
 
     fn png(&self) -> Result<Vec<u8>> {
@@ -1945,6 +2643,10 @@ impl Editor {
         if let Some(d) = &self.dialog {
             if d.kind == DlgKind::Text {
                 self.text_keys(ctx, acts);
+                return;
+            }
+            if d.kind == DlgKind::Sticker {
+                self.sticker_keys(ctx, acts);
                 return;
             }
             let typing = ctx.memory(|m| m.focused().is_some());
@@ -2093,6 +2795,36 @@ impl Editor {
         }
     }
 
+    /// Tastatura ferestrei de stickere: Enter alege primul rezultat al
+    /// căutării, Esc renunță. Rulează ÎNAINTEA construirii interfeței, ca
+    /// tastele să nu ajungă în câmpul de căutare.
+    fn sticker_keys(&mut self, ctx: &egui::Context, acts: &mut Vec<Act>) {
+        use egui::{Event, Key as K};
+        let (mut ok, mut cancel) = (false, false);
+        ctx.input_mut(|i| {
+            i.events.retain(|e| match e {
+                Event::Key { key: K::Enter, pressed: true, .. } => {
+                    ok = true;
+                    false
+                }
+                Event::Key { key: K::Escape, pressed: true, .. } => {
+                    cancel = true;
+                    false
+                }
+                _ => true,
+            });
+        });
+        if ok {
+            if let Some(d) = self.dialog.as_mut() {
+                d.sticker.picked = d.sticker.first_hit();
+            }
+            acts.push(Act::DlgOk);
+        }
+        if cancel {
+            acts.push(Act::DlgCancel);
+        }
+    }
+
     fn pick(&mut self, t: Tool) {
         // schimbarea uneltei renunță la forma activă; cât stai pe aceeași
         // unealtă, forma abia trasă rămâne selectată, cu nodurile la vedere
@@ -2146,13 +2878,16 @@ impl Editor {
                             DlgKind::Size => self.img_resize(d.w, d.h),
                             DlgKind::Canvas => self.img_canvas(d.w, d.h, d.color),
                             DlgKind::Text => self.text_done(d.text, true),
+                            DlgKind::Sticker => self.sticker_done(ctx, d.sticker, true),
                         }
                     }
                 }
                 Act::DlgCancel => {
                     if let Some(d) = self.dialog.take() {
-                        if d.kind == DlgKind::Text {
-                            self.text_done(d.text, false);
+                        match d.kind {
+                            DlgKind::Text => self.text_done(d.text, false),
+                            DlgKind::Sticker => self.sticker_done(ctx, d.sticker, false),
+                            _ => {}
                         }
                     }
                 }

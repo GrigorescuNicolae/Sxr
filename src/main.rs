@@ -83,6 +83,13 @@ fn real_main() -> anyhow::Result<()> {
     if arg.as_deref() == Some("--balloon-flow") {
         return app::balloon_flow_test();
     }
+    if arg.as_deref() == Some("--sticker-shot") {
+        let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/stick.png".into());
+        return app::sticker_shot(&out);
+    }
+    if arg.as_deref() == Some("--sticker-flow") {
+        return app::sticker_flow_test();
+    }
     if arg.as_deref() == Some("--bar-test") {
         let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/bar.png".into());
         return app::toolbar_shot(&out);

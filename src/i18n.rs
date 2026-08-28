@@ -235,6 +235,17 @@ messages! {
     AlignMiddle        => ("Middle", "Mijloc"),
     AlignBottom        => ("Bottom", "Jos"),
 
+    // ---- fereastra de alegere a stickerelor (ShareX: StickerForm)
+    // titlul original e „ShareX - Sticker picker"; aplicația noastră are alt nume
+    DlgStickerTitle  => ("Sticker picker", "Alegere sticker"),
+    LblSearch        => ("Search:", "Caută:"),
+    LblStickerPack   => ("Stickers:", "Stickere:"),
+    LblStickerSize   => ("Size:", "Dimensiune:"),
+    // rădăcina folderului de stickere, cea fără pachet în jur
+    StickerAllPacks  => ("All stickers", "Toate stickerele"),
+    TipStickerFolder => ("Open the sticker folder", "Deschide folderul cu stickere"),
+    StNoStickerMatch => ("no sticker matches the search", "niciun sticker nu se potrivește"),
+
     // ---- bara de stare, mesajele fără valori inserate
     StNothingToUndo   => ("nothing to undo", "nimic de anulat"),
     StNothingToRedo   => ("nothing to redo", "nimic de refăcut"),
@@ -305,6 +316,13 @@ pub fn put_png_files_in(path: &str) -> String {
     match lang() {
         Lang::En => format!("put PNG files in {path}"),
         Lang::Ro => format!("pune fișiere PNG în {path}"),
+    }
+}
+
+pub fn cannot_open_folder(path: &str, err: &str) -> String {
+    match lang() {
+        Lang::En => format!("cannot open the folder {path}: {err}"),
+        Lang::Ro => format!("nu pot deschide folderul {path}: {err}"),
     }
 }
 
