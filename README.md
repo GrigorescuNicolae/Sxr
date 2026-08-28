@@ -1,77 +1,78 @@
 # sxr
 
-O reimplementare fidelă a **editorului clasic de imagini din ShareX**, pentru Linux,
-scrisă în Rust.
+A faithful reimplementation of the **classic ShareX image editor** for Linux,
+written in Rust.
 
-Nu încearcă să fie ShareX întreg. Acoperă fluxul folosit zilnic: apeși scurtătura,
-alegi o regiune de pe ecran, se deschide editorul, imaginea e deja în clipboard.
+It does not try to be all of ShareX. It covers the flow you use every day: hit
+the shortcut, pick a region of the screen, the editor opens, and the capture is
+already in the clipboard.
 
-## Ce face
+## What it does
 
-- **Captură de regiune**, cu copiere automată în clipboard imediat după selecție —
-  dacă închizi fără să editezi, captura e deja acolo.
-- **Editorul clasic**, cu bara de unelte în ordinea din ShareX și aceleași iconițe:
-  dreptunghi, elipsă, mână liberă, mână liberă cu vârf de săgeată, linie, săgeată,
-  text cu contur, text cu fundal, balon de dialog, numărător de pași, lupă,
-  imagine din fișier, imagine din ecran, sticker, cursor, gumă inteligentă,
-  blur, pixelare, evidențiere, reflector, decupare, tăiere.
-- **Fereastră de alegere a stickerelor** ca în ShareX: pachete (subfoldere),
-  căutare pe calea întreagă, grilă de miniaturi încărcate leneș și mărimea
-  aleasă, care e și mărimea la care se inserează stickerul.
-- **Fereastră de introducere a textului** ca în ShareX: familie de font din sistem,
-  mărime, culoare, culoare secundară, bold / italic / subliniat, aliniere pe ambele axe.
-  `Enter` = OK, `Ctrl+Enter` = rând nou, `Esc` = renunță.
-- **Linie și săgeată curbabile**: forma primește `2 + N` noduri; nodul din mijloc
-  o îndoaie pe o curbă cardinală, exact ca `LineDrawingShape`.
-- **Meniul Imagine**: dimensiune imagine, dimensiune pânză, decupare, decupare
-  automată, rotire la stânga și la dreapta.
-- Anulare / refacere, ordonarea straturilor, umbră, duplicare.
+- **Region capture**, copied to the clipboard automatically right after the
+  selection — close without editing and the capture is already there.
+- **The classic editor**, with the toolbar in ShareX's order and the same icons:
+  rectangle, ellipse, freehand, freehand arrow, line, arrow, text with outline,
+  text with background, speech balloon, step counter, magnifier, image from
+  file, image from screen, sticker, cursor, smart eraser, blur, pixelate,
+  highlight, spotlight, crop, cut out.
+- **Sticker picker** like ShareX's: packs (subfolders), search across the whole
+  path, a grid of lazily loaded thumbnails, and a size that doubles as the size
+  the sticker is inserted at.
+- **Text input window** like ShareX's: font family from the system, size, color,
+  secondary color, bold / italic / underline, alignment on both axes.
+  `Enter` = OK, `Ctrl+Enter` = new line, `Esc` = cancel.
+- **Curvable line and arrow**: the shape gets `2 + N` nodes, and the middle node
+  bends it along a cardinal spline, exactly like `LineDrawingShape`.
+- **Image menu**: image size, canvas size, crop, auto crop, rotate left and
+  right.
+- Undo / redo, layer ordering, drop shadow, duplicate.
 
-Nu include: încărcare pe servicii, OCR, fluxuri de lucru, istoric, tipărire.
+Not included: uploading to services, OCR, workflows, history, printing.
 
-## Compilare
+## Building
 
 ```sh
 cargo build --release
 install -m755 target/release/sxr ~/.local/bin/sxr
 ```
 
-Cerințe: Rust (ediția 2024) și, pentru captura de regiune, un mediu Wayland cu
-portalul de captură de ecran. Lista de fonturi din fereastra de text vine din
-`fc-list` (fontconfig); dacă lipsește, se folosește DejaVu Sans.
+Requirements: Rust (2024 edition) and, for region capture, a Wayland session
+with the screenshot portal. The font list in the text window comes from
+`fc-list` (fontconfig); without it, DejaVu Sans is used.
 
-## Utilizare
+## Usage
 
 ```sh
-sxr              # selectează o regiune de pe ecran, apoi deschide editorul
-sxr <fișier>     # deschide direct o imagine existentă
+sxr             # select a region of the screen, then open the editor
+sxr <file>      # open an existing image directly
 ```
 
-Practic se leagă de o scurtătură globală (de exemplu `Ctrl+Print`).
+In practice you bind it to a global shortcut (`Ctrl+Print`, for example).
 
-Stickerele se citesc din `~/.local/share/sxr/stickers/` — pui acolo imagini
-(`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`) și apar în unealta de stickere.
-Fiecare subfolder e un pachet; fișierele lăsate direct în rădăcină formează
-pachetul „All stickers". Unealta deschide o fereastră proprie, ca `StickerForm`
-din ShareX: căutare, lista de pachete, buton spre folder și mărimea stickerului
-(16–256, din 16 în 16), ținută minte împreună cu pachetul ales. Clic pe o
-miniatură — sau `Enter`, care ia primul rezultat al căutării — inserează
-stickerul în punctul de clic; `Esc` renunță.
+Stickers are read from `~/.local/share/sxr/stickers/` — drop images there
+(`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`) and they show up in the sticker
+tool. Each subfolder is a pack; files left directly in the root make up the
+"All stickers" pack. The tool opens a window of its own, like ShareX's
+`StickerForm`: search, the pack list, a button to the folder, and the sticker
+size (16–256, in steps of 16), remembered along with the selected pack. Click a
+thumbnail — or press `Enter`, which takes the first search result — to insert
+the sticker at the click point; `Esc` cancels.
 
-## Relația cu ShareX
+## Relationship to ShareX
 
-Proiectul e inspirat din [ShareX](https://github.com/ShareX/ShareX) și urmărește
-îndeaproape comportamentul editorului clasic, dar e scris de la zero în Rust.
-**Niciun rând de cod nu e copiat din ShareX.** Comportamentul, ordinea uneltelor
-și valorile implicite au fost reproduse pe baza observării aplicației și a
-documentației publice.
+The project is inspired by [ShareX](https://github.com/ShareX/ShareX) and
+follows the behavior of its classic editor closely, but it is written from
+scratch in Rust. **Not a single line of code is copied from ShareX.** The
+behavior, the order of the tools and the default values were reproduced by
+observing the application and reading its public documentation.
 
-Nu e afiliat cu proiectul ShareX și nu e susținut de acesta. ShareX este
-© ShareX Team, licențiat GPL-3.0; acea licență nu se aplică aici.
+It is not affiliated with the ShareX project, nor endorsed by it. ShareX is
+© ShareX Team, licensed under GPL-3.0; that license does not apply here.
 
-## Licență
+## License
 
-Codul e sub licența [MIT](LICENSE).
+The code is under the [MIT](LICENSE) license.
 
-Iconițele, fonturile și stickerele au licențele lor — vezi
+The icons, fonts and stickers have licenses of their own — see
 [ATTRIBUTION.md](ATTRIBUTION.md).
