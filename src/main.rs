@@ -76,6 +76,13 @@ fn real_main() -> anyhow::Result<()> {
         let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/dlg.png".into());
         return app::text_dialog_shot(&out);
     }
+    if arg.as_deref() == Some("--balloon-test") {
+        let dir = std::env::args().nth(2).context("lipseste directorul de iesire")?;
+        return app::balloon_shot(&dir);
+    }
+    if arg.as_deref() == Some("--balloon-flow") {
+        return app::balloon_flow_test();
+    }
     if arg.as_deref() == Some("--bar-test") {
         let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/bar.png".into());
         return app::toolbar_shot(&out);

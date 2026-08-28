@@ -28,6 +28,19 @@ const NODE: f32 = 18.0;
 /// Latura casetei nodului — și raza în care se prinde cu mausul.
 const NODE_HIT: f32 = 24.0;
 
+/// Unealta activă din bară, ca în ShareX: nu un bloc de culoare, ci un fundal
+/// discret plus un chenar de 1px. Bara editorului de regiune primește
+/// `ToolStripDarkRenderer` (`ShareXResources.ApplyTheme`), adică `DarkColorTable`
+/// peste `ShareXTheme.DarkTheme`; de acolo vin `ButtonCheckedGradient*` =
+/// `MenuCheckBackgroundColor` = #333333 și `ButtonSelectedBorder` =
+/// `MenuHighlightBorderColor` = #3F3F3F, iar survolarea = `MenuHighlightColor`
+/// = #2E2E2E. Le luăm ca atare, nu ca diferență față de fundal: panoul nostru
+/// e mai întunecat decât bara ShareX (#1B1B1B față de #272727), deci diferența
+/// transpusă ar da un fundal aproape invizibil.
+const SEL_BG: Color32 = Color32::from_rgb(0x33, 0x33, 0x33);
+const SEL_BORDER: Color32 = Color32::from_rgb(0x3F, 0x3F, 0x3F);
+const HOVER_BG: Color32 = Color32::from_rgb(0x2E, 0x2E, 0x2E);
+
 pub fn run(img: RgbaImage) -> Result<()> {
     let (w, h) = img.dimensions();
     let opts = eframe::NativeOptions {
@@ -96,6 +109,166 @@ pub fn toolbar_shot(path: &str) -> Result<()> {
                     .show(ui, |ui| ed.toolbar(ui, &icons, &mut acts));
             });
     })
+}
+
+/// Randarea unui balon de dialog pe calea de PREVIEW (`Shape::draw`, adică
+/// `egui::Painter`), pentru `--balloon-test`. Regula proiectului e că
+/// preview-ul și exportul desenează la fel, deci modul scrie ambele imagini,
+/// din aceeași formă și peste același fundal, ca să poată fi comparate pixel
+/// cu pixel din afară.
+pub fn balloon_shot(dir: &str) -> Result<()> {
+    let (w, h) = (300u32, 220u32);
+    let bg = RgbaImage::from_pixel(w, h, image::Rgba([0, 0, 0, 255]));
+    let s = demo_balloon();
+
+    shot(&format!("{dir}/balon-preview.png"), w, h, |ctx, _| {
+        // fundal negru propriu: `shot` lasă altfel magenta, iar comparația cu
+        // exportul cere exact aceiași pixeli sub formă
+        egui::Area::new("balon".into())
+            .fixed_pos(Pos2::ZERO)
+            .show(ctx, |ui| {
+                let p = ui.painter();
+                p.rect_filled(
+                    Rect::from_min_size(Pos2::ZERO, Vec2::new(w as f32, h as f32)),
+                    egui::CornerRadius::ZERO,
+                    Color32::BLACK,
+                );
+                s.draw(p, |q| q, 1.0, &RgbaImage::new(1, 1));
+            });
+    })?;
+
+    let path = format!("{dir}/balon-export.png");
+    // fără umbră: preview-ul din pânză o desenează separat, nu în `Shape::draw`
+    let png = render::compose_opts(&bg, std::slice::from_ref(&s), false)?;
+    std::fs::write(&path, &png).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
+    println!("scris {path}");
+    Ok(())
+}
+
+/// Balonul folosit de `--balloon-test` și de `--balloon-flow`: culori pline și
+/// contur gros, ca măsurătorile de culoare din afară să nu cadă pe antialias.
+fn demo_balloon() -> Shape {
+    Shape::Balloon {
+        rect: Rect::from_min_max(Pos2::new(40.0, 30.0), Pos2::new(250.0, 130.0)),
+        tail: Pos2::new(70.0, 200.0),
+        text: "Salut".into(),
+        opts: shape::TextOpts::default(),
+        fill: Color32::from_rgb(0, 0, 255),
+        border: Color32::from_rgb(0, 255, 0),
+        width: 4.0,
+        radius: 0.0,
+    }
+}
+
+/// Rezultatul unei verificări din `--balloon-flow`, pe o singură linie.
+fn ck(fail: &mut usize, ok: bool, msg: String) {
+    if !ok {
+        *fail += 1;
+    }
+    println!("{} {msg}", if ok { "OK" } else { "ESUAT" });
+}
+
+/// Verificare neinteractivă a uneltei „balon de dialog" (`--balloon-flow`):
+/// reface pas cu pas ce fac mausul și fereastra de text pe pânză, chemând
+/// direct metodele editorului. Fără ea, drumul clic → schiță → fereastră de
+/// text nu se poate proba decât cu mâna, într-o sesiune grafică.
+pub fn balloon_flow_test() -> Result<()> {
+    let ctx = egui::Context::default();
+    let mut ed = Editor::new(&ctx, RgbaImage::new(400, 300));
+    let mut fail = 0usize;
+
+    // 1. tragerea obișnuită: apăsare, tragere, ridicare
+    ed.pick(Tool::SpeechBalloon);
+    ed.draft = ed.new_draft(Pos2::new(40.0, 30.0));
+    ed.update_draft(Pos2::new(250.0, 130.0));
+    ed.commit_draft();
+    ck(&mut fail, ed.shapes.len() == 1, format!("1 tragere: {} forme", ed.shapes.len()));
+    let is_balloon = matches!(ed.shapes.first(), Some(Shape::Balloon { .. }));
+    ck(&mut fail, is_balloon, format!("1 forma e balon: {is_balloon}"));
+    let dlg = ed.dialog.as_ref().map(|d| d.kind == DlgKind::Text) == Some(true);
+    ck(&mut fail, dlg, format!("1 fereastra de text deschisa: {dlg}"));
+    ck(&mut fail, ed.sel.is_none(), format!("1 sel cat e fereastra deschisa: {:?}", ed.sel));
+
+    // 2. închiderea cu text: forma rămâne, textul ajunge în ea, nodurile revin
+    let mut d = ed.dialog.take().expect("fereastra de text");
+    d.text.buf = "Salut".into();
+    ed.text_done(d.text, true);
+    let txt = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Salut");
+    ck(&mut fail, txt, format!("2 textul a ajuns in forma: {txt}"));
+    ck(&mut fail, ed.shapes.len() == 1, format!("2 forma a ramas: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.sel == Some(0), format!("2 sel dupa OK: {:?}", ed.sel));
+
+    // 3. renunțarea pe o formă abia trasă: dispare ea, nimic altceva
+    ed.draft = ed.new_draft(Pos2::new(40.0, 160.0));
+    ed.update_draft(Pos2::new(250.0, 260.0));
+    ed.commit_draft();
+    let d = ed.dialog.take().expect("fereastra de text");
+    ed.text_done(d.text, false);
+    let n = ed.shapes.len();
+    ck(&mut fail, n == 1, format!("3 dupa renuntare raman {n} forme"));
+    let keep = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Salut");
+    ck(&mut fail, keep, format!("3 balonul dinainte e neatins: {keep}"));
+
+    // 4. clicul simplu, fără tragere: caseta degenerată primește dimensiunea
+    // implicită, exact ca la casetele de text
+    let click = matches!(Tool::SpeechBalloon, Tool::Step) || Tool::SpeechBalloon.is_text();
+    ck(&mut fail, click, format!("4 clicul simplu plaseaza balonul: {click}"));
+    let at = Pos2::new(40.0, 160.0);
+    ed.draft = ed.new_draft(at);
+    ed.commit_draft();
+    ck(&mut fail, ed.shapes.len() == 2, format!("4 dupa clic: {} forme", ed.shapes.len()));
+    if let Some(Shape::Balloon { rect, .. }) = ed.shapes.get(1) {
+        let ok = rect.width() > 12.0 && rect.height() > 12.0;
+        ck(&mut fail, ok, format!("4 caseta implicita {}x{}", rect.width(), rect.height()));
+    } else {
+        ck(&mut fail, false, "4 clicul n-a lasat niciun balon".into());
+    }
+    if let Some(d) = ed.dialog.take() {
+        ed.text_done(d.text, false);
+    }
+
+    // 5. nodurile: 8 de dreptunghi plus vârful cozii
+    let s = ed.shapes[0].clone();
+    let n = s.handles().len();
+    ck(&mut fail, n == 9, format!("5 noduri: {n}"));
+    let (r0, t0) = balloon_parts(&s);
+    let mut s8 = s.clone();
+    s8.move_handle(8, Pos2::new(300.0, 280.0));
+    let (r8, t8) = balloon_parts(&s8);
+    let only_tail = r8 == r0 && t8 == Pos2::new(300.0, 280.0);
+    ck(&mut fail, only_tail, format!("5 nodul 8 muta doar coada: {r8:?} / {t8:?}"));
+    let mut s0 = s.clone();
+    s0.move_handle(0, Pos2::new(10.0, 10.0));
+    let (r1, t1) = balloon_parts(&s0);
+    let only_box = r1 != r0 && t1 == t0;
+    ck(&mut fail, only_box, format!("5 nodul 0 muta doar caseta: {r1:?} / {t1:?}"));
+
+    // 6. coada așezată la commit: sub colțul din stânga-jos, cu baza pe latura
+    // de jos a casetei și vârful chiar în punctul cozii
+    let sub = (t0.y - r0.bottom() - 30.0).abs() < 0.01 && (t0.x - r0.left()).abs() < 0.01;
+    let lb = r0.left_bottom();
+    ck(&mut fail, sub, format!("6 coada {t0:?} sub coltul stanga-jos {lb:?}"));
+    let tl = shape::balloon_tail(r0, t0);
+    let base_ok = tl.base[0] != tl.base[1]
+        && (tl.base[0].y - r0.bottom()).abs() < 0.01
+        && (tl.base[1].y - r0.bottom()).abs() < 0.01;
+    let (b0, b1) = (tl.base[0], tl.base[1]);
+    ck(&mut fail, base_ok, format!("6 baza pe latura de jos: {b0:?} - {b1:?}"));
+    ck(&mut fail, tl.tip == t0, format!("6 varful e chiar coada: {:?}", tl.tip));
+
+    if fail > 0 {
+        anyhow::bail!("{fail} verificari esuate");
+    }
+    println!("totul e bine");
+    Ok(())
+}
+
+/// Caseta și vârful cozii unui balon, pentru verificările de mai sus.
+fn balloon_parts(s: &Shape) -> (Rect, Pos2) {
+    match s {
+        Shape::Balloon { rect, tail, .. } => (*rect, *tail),
+        _ => (Rect::NOTHING, Pos2::ZERO),
+    }
 }
 
 fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut Editor)) -> Result<()> {
@@ -2003,10 +2176,22 @@ impl Editor {
                     // În ShareX iconițele stau direct pe bară, fără casetă în
                     // jur: rama și fundalul apar doar la trecerea mausului sau
                     // pe unealta aleasă. Deci golim doar starea „inactiv".
-                    let w = &mut ui.style_mut().visuals.widgets;
+                    let v = &mut ui.style_mut().visuals;
+                    v.selection.bg_fill = SEL_BG;
+                    let w = &mut v.widgets;
                     w.inactive.weak_bg_fill = Color32::TRANSPARENT;
                     w.inactive.bg_fill = Color32::TRANSPARENT;
                     w.inactive.bg_stroke = egui::Stroke::NONE;
+                    // Survolarea în ShareX e doar un fundal ceva mai deschis;
+                    // chenarul îl păstrăm pentru unealta activă, altfel cele
+                    // două stări ar arăta aproape la fel. Apăsarea adaugă
+                    // chenarul, în locul ramei albe pe care o dă egui.
+                    w.hovered.weak_bg_fill = HOVER_BG;
+                    w.hovered.bg_fill = HOVER_BG;
+                    w.hovered.bg_stroke = egui::Stroke::NONE;
+                    w.active.weak_bg_fill = HOVER_BG;
+                    w.active.bg_fill = HOVER_BG;
+                    w.active.bg_stroke = egui::Stroke::new(1.0, SEL_BORDER);
 
                     // Bara stă centrată pe lățimea ferestrei, ca în ShareX.
                     let pad = ((ui.available_width() - self.bar_w) * 0.5).max(0.0);
@@ -2037,11 +2222,23 @@ impl Editor {
                     ui.add_space(4.0);
 
                     for t in Tool::ALL {
-                        if ui
-                            .add(egui::Button::image(icons.img(t.icon())).selected(self.tool == t))
-                            .on_hover_text(t.tooltip())
-                            .clicked()
-                        {
+                        // `Button::selected` ia fundalul din `selection.bg_fill`,
+                        // dar chenarul tot din starea widget-ului — pe care am
+                        // golit-o ca iconițele să rămână plate. Iar `Button::stroke`
+                        // ar umfla butonul cu 2px, fiindcă egui scade grosimea din
+                        // marginea interioară doar pentru conturul din stil. Deci
+                        // chenarul uneltei active îl desenăm noi, peste butonul gata
+                        // așezat: lățimea barei rămâne neatinsă.
+                        let on = self.tool == t;
+                        let r = ui
+                            .add(egui::Button::image(icons.img(t.icon())).selected(on))
+                            .on_hover_text(t.tooltip());
+                        if on {
+                            let cr = ui.visuals().widgets.inactive.corner_radius;
+                            let s = egui::Stroke::new(1.0, SEL_BORDER);
+                            ui.painter().rect_stroke(r.rect, cr, s, egui::StrokeKind::Inside);
+                        }
+                        if r.clicked() {
                             self.pick(t);
                         }
                     }

@@ -188,8 +188,12 @@ impl Tool {
         )
     }
 
+    /// Unealta lasă în urmă o formă cu text, deci se plasează și dintr-un
+    /// simplu clic și deschide fereastra de introducere a textului. Balonul
+    /// intră aici pentru că în ShareX `SpeechBalloonDrawingShape` derivă din
+    /// `TextDrawingShape`: se poartă în toate privințele ca o casetă de text.
     pub fn is_text(self) -> bool {
-        matches!(self, Tool::TextOutline | Tool::TextBackground)
+        matches!(self, Tool::TextOutline | Tool::TextBackground | Tool::SpeechBalloon)
     }
 }
 
