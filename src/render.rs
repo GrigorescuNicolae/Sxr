@@ -234,7 +234,7 @@ pub fn compose_opts(src: &RgbaImage, shapes: &[Shape], shadow: bool) -> Result<V
 
     let mut buf = std::io::Cursor::new(Vec::new());
     out.write_to(&mut buf, image::ImageFormat::Png)
-        .context("codare PNG")?;
+        .context("PNG encoding")?;
     Ok(buf.into_inner())
 }
 
@@ -294,14 +294,14 @@ fn draw_one(pm: &mut Pixmap, w: u32, h: u32, src: &RgbaImage, s: &Shape) {
                 }
             }
         }
-        Shape::Line { from, to, mid, curbat, color, width } => {
-            if let Some(path) = poly_path(&curve_poly(*from, *to, mid, *curbat)) {
+        Shape::Line { from, to, mid, curved, color, width } => {
+            if let Some(path) = poly_path(&curve_poly(*from, *to, mid, *curved)) {
                 pm.stroke_path(&path, &paint_of(*color), &stroke_of(*width), id, None);
             }
         }
-        Shape::Arrow { from, to, mid, curbat, color, width } => {
+        Shape::Arrow { from, to, mid, curved, color, width } => {
             let p = paint_of(*color);
-            let (tail, head) = arrow_geom(&curve_poly(*from, *to, mid, *curbat), *width);
+            let (tail, head) = arrow_geom(&curve_poly(*from, *to, mid, *curved), *width);
             if let Some(path) = poly_path(&tail) {
                 pm.stroke_path(&path, &p, &stroke_of(*width), id, None);
             }

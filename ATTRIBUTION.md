@@ -1,41 +1,41 @@
-# Atribuiri
+# Attribution
 
 ## Fugue Icons
 
-Iconițele din `assets/icons/` fac parte din setul **Fugue Icons** de
-Yusuke Kamiyamane, licențiat **Creative Commons Attribution 3.0**
+The icons in `assets/icons/` are part of the **Fugue Icons** set by
+Yusuke Kamiyamane, licensed under **Creative Commons Attribution 3.0**
 (<https://creativecommons.org/licenses/by/3.0/>).
 
-- Autor: Yusuke Kamiyamane
-- Sursă: <https://p.yusukekamiyamane.com/>
+- Author: Yusuke Kamiyamane
+- Source: <https://p.yusukekamiyamane.com/>
 
-Acesta este același set folosit de ShareX, motiv pentru care bara de unelte
-arată identic. Iconițele sunt reutilizate sub licența CC-BY 3.0, nu sub
-licența codului ShareX.
+This is the same set ShareX uses, which is why the toolbar looks identical.
+The icons are reused under the CC-BY 3.0 license, not under the ShareX code
+license.
 
 ## DejaVu Fonts
 
-`assets/DejaVuSans.ttf` și `assets/DejaVuSans-Bold.ttf` sunt din proiectul
-**DejaVu Fonts** (<https://dejavu-fonts.github.io/>), distribuite sub licența
-DejaVu Fonts License (derivată din Bitstream Vera Fonts License) — permisivă,
-permite redistribuirea și încorporarea.
+`assets/DejaVuSans.ttf` and `assets/DejaVuSans-Bold.ttf` come from the
+**DejaVu Fonts** project (<https://dejavu-fonts.github.io/>), distributed under
+the DejaVu Fonts License (derived from the Bitstream Vera Fonts License) — a
+permissive license that allows redistribution and embedding.
 
 ## ShareX
 
-`sxr` este o reimplementare independentă, în Rust, a fluxului de captură și a
-editorului clasic din ShareX. **Nu conține cod din ShareX.** Comportamentul,
-ordinea uneltelor și valorile implicite au fost reproduse pe baza observării
-aplicației și a documentației publice. ShareX este licențiat GPL-3.0;
-această licență nu se aplică aici, întrucât nu s-a copiat cod sursă.
+`sxr` is an independent reimplementation, in Rust, of the capture flow and the
+classic editor from ShareX. **It contains no ShareX code.** The behavior, the
+order of the tools and the default values were reproduced by observing the
+application and reading its public documentation. ShareX is licensed under
+GPL-3.0; that license does not apply here, since no source code was copied.
 
-## Twemoji (stickere)
+## Twemoji (stickers)
 
-Setul de stickere livrat implicit în `~/.local/share/sxr/stickers/`
-provine din [Twemoji](https://github.com/jdecked/twemoji), varianta întreținută
-de comunitate a emoji-urilor Twitter.
+The sticker set shipped by default in `~/.local/share/sxr/stickers/` comes from
+[Twemoji](https://github.com/jdecked/twemoji), the community-maintained fork of
+the Twitter emoji.
 
-Grafica este licențiată **CC BY 4.0** (creatorii originali: Twitter, Inc. și
-colaboratorii proiectului). Redistribuirea e permisă cu atribuire; fișierele nu
-au fost modificate.
+The artwork is licensed **CC BY 4.0** (original creators: Twitter, Inc. and the
+project's contributors). Redistribution is allowed with attribution; the files
+were not modified.
 
-Licența acoperă doar imaginile, nu și codul sxr.
+The license covers only the images, not the sxr code.

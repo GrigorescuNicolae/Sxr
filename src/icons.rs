@@ -81,7 +81,7 @@ impl Icons {
     }
 
     pub fn img(&self, name: &str) -> egui::Image<'static> {
-        let tex = self.0.get(name).expect("iconiță lipsă");
+        let tex = self.0.get(name).expect("missing icon");
         egui::Image::from_texture(egui::load::SizedTexture::from_handle(tex))
             .fit_to_exact_size(egui::Vec2::splat(16.0))
     }

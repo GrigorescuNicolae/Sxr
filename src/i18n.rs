@@ -485,41 +485,41 @@ pub fn family_load_failed(family: &str, err: &str, fallback: &str) -> String {
 /// (sometimes legitimate: "OK") and Romanian diacritics left in the English
 /// variant. Non-interactive, no window.
 pub fn check() {
-    const DIACRITICE: [char; 10] = ['ă', 'â', 'î', 'ș', 'ț', 'Ă', 'Â', 'Î', 'Ș', 'Ț'];
+    const DIACRITICS: [char; 10] = ['ă', 'â', 'î', 'ș', 'ț', 'Ă', 'Â', 'Î', 'Ș', 'Ț'];
 
-    println!("chei: {}", Msg::ALL.len());
+    println!("keys: {}", Msg::ALL.len());
     for l in Lang::ALL {
-        let goale = Msg::ALL.iter().filter(|m| m.text(l).is_empty()).count();
-        println!("{}: {} chei, {} goale", l.code(), Msg::ALL.len(), goale);
+        let empty = Msg::ALL.iter().filter(|m| m.text(l).is_empty()).count();
+        println!("{}: {} keys, {} empty", l.code(), Msg::ALL.len(), empty);
     }
 
-    let goale: Vec<&Msg> = Msg::ALL
+    let empty: Vec<&Msg> = Msg::ALL
         .iter()
         .filter(|m| Lang::ALL.iter().any(|l| m.text(*l).is_empty()))
         .collect();
-    println!("\ntext gol: {}", goale.len());
-    for m in &goale {
+    println!("\nempty text: {}", empty.len());
+    for m in &empty {
         println!("  {}", m.key());
     }
 
-    let egale: Vec<&Msg> = Msg::ALL
+    let same: Vec<&Msg> = Msg::ALL
         .iter()
         .filter(|m| m.text(Lang::En) == m.text(Lang::Ro))
         .collect();
-    println!("\nengleza identică cu româna: {}", egale.len());
-    for m in &egale {
+    println!("\nEnglish identical to Romanian: {}", same.len());
+    for m in &same {
         println!("  {} = {:?}", m.key(), m.text(Lang::En));
     }
 
-    let cu_diacritice: Vec<&Msg> = Msg::ALL
+    let with_diacritics: Vec<&Msg> = Msg::ALL
         .iter()
-        .filter(|m| m.text(Lang::En).contains(DIACRITICE))
+        .filter(|m| m.text(Lang::En).contains(DIACRITICS))
         .collect();
-    println!("\ndiacritice românești în varianta engleză: {}", cu_diacritice.len());
-    for m in &cu_diacritice {
+    println!("\nRomanian diacritics in the English text: {}", with_diacritics.len());
+    for m in &with_diacritics {
         println!("  {} = {:?}", m.key(), m.text(Lang::En));
     }
 
-    println!("\nfișier de configurare: {}", config::path().display());
-    println!("limba curentă: {}", lang().code());
+    println!("\nconfig file: {}", config::path().display());
+    println!("current language: {}", lang().code());
 }

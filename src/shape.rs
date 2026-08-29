@@ -217,13 +217,13 @@ pub enum Shape {
     Rect { rect: Rect, border: Color32, fill: Color32, width: f32, radius: f32 },
     Ellipse { rect: Rect, border: Color32, fill: Color32, width: f32 },
     /// A line with curve nodes, like ShareX's `LineDrawingShape`: besides the
-    /// endpoints it keeps `mid`, the intermediate points. As long as `curbat` is
+    /// endpoints it keeps `mid`, the intermediate points. As long as `curved` is
     /// false they place themselves on the segment between the endpoints
     /// (`AutoPositionCenterPoints`) and the line is drawn straight; once one has
     /// been dragged with the mouse they stay where the user put them, and the
     /// line becomes a cardinal spline.
-    Line { from: Pos2, to: Pos2, mid: Vec<Pos2>, curbat: bool, color: Color32, width: f32 },
-    Arrow { from: Pos2, to: Pos2, mid: Vec<Pos2>, curbat: bool, color: Color32, width: f32 },
+    Line { from: Pos2, to: Pos2, mid: Vec<Pos2>, curved: bool, color: Color32, width: f32 },
+    Arrow { from: Pos2, to: Pos2, mid: Vec<Pos2>, curved: bool, color: Color32, width: f32 },
     Free { pts: Vec<Pos2>, color: Color32, width: f32, arrow: bool },
     Text {
         rect: Rect,
@@ -323,8 +323,8 @@ const CURVE_STEPS: usize = 24;
 /// ShareX's `AutoPositionCenterPoints`: as long as no middle node has been
 /// dragged, the intermediate points are placed by linear interpolation between
 /// the endpoints, so the line stays straight and the nodes sit right on it.
-pub fn auto_mid(from: Pos2, to: Pos2, mid: &mut [Pos2], curbat: bool) {
-    if curbat {
+pub fn auto_mid(from: Pos2, to: Pos2, mid: &mut [Pos2], curved: bool) {
+    if curved {
         return;
     }
     let n = (mid.len() + 1) as f32;
@@ -350,8 +350,8 @@ fn line_pts(from: Pos2, to: Pos2, mid: &[Pos2]) -> Vec<Pos2> {
 /// tangent is `T_i = tension * (P_{i+1} - P_{i-1})` (at the ends we take the
 /// difference against the only neighbor), and the piece between `P_i` and
 /// `P_{i+1}` has control points `P_i + T_i/3` and `P_{i+1} - T_{i+1}/3`.
-pub fn curve_poly(from: Pos2, to: Pos2, mid: &[Pos2], curbat: bool) -> Vec<Pos2> {
-    if !curbat || mid.is_empty() {
+pub fn curve_poly(from: Pos2, to: Pos2, mid: &[Pos2], curved: bool) -> Vec<Pos2> {
+    if !curved || mid.is_empty() {
         return vec![from, to];
     }
     let p = line_pts(from, to, mid);
@@ -795,19 +795,19 @@ impl Shape {
                 fill: op(*fill),
                 width: *width,
             },
-            Shape::Line { from, to, mid, curbat, width, .. } => Shape::Line {
+            Shape::Line { from, to, mid, curved, width, .. } => Shape::Line {
                 from: *from,
                 to: *to,
                 mid: mid.clone(),
-                curbat: *curbat,
+                curved: *curved,
                 color: SHADOW,
                 width: *width,
             },
-            Shape::Arrow { from, to, mid, curbat, width, .. } => Shape::Arrow {
+            Shape::Arrow { from, to, mid, curved, width, .. } => Shape::Arrow {
                 from: *from,
                 to: *to,
                 mid: mid.clone(),
-                curbat: *curbat,
+                curved: *curved,
                 color: SHADOW,
                 width: *width,
             },
@@ -887,12 +887,12 @@ impl Shape {
                     ));
                 }
             }
-            Shape::Line { from, to, mid, curbat, color, width } => {
-                let poly = curve_poly(*from, *to, mid, *curbat);
+            Shape::Line { from, to, mid, curved, color, width } => {
+                let poly = curve_poly(*from, *to, mid, *curved);
                 draw_poly(p, &poly, Stroke::new(sw(*width), *color), &map);
             }
-            Shape::Arrow { from, to, mid, curbat, color, width } => {
-                let poly = curve_poly(*from, *to, mid, *curbat);
+            Shape::Arrow { from, to, mid, curved, color, width } => {
+                let poly = curve_poly(*from, *to, mid, *curved);
                 let (tail, head) = arrow_geom(&poly, *width);
                 draw_poly(p, &tail, Stroke::new(sw(*width), *color), &map);
                 draw_arrow_head(p, head, *color, &map);
@@ -1226,9 +1226,9 @@ impl Shape {
             }
             // the curve can bulge slightly out of the polygon of its points, so
             // we take the drawn polyline itself
-            Shape::Arrow { from, to, mid, curbat, .. } | Shape::Line { from, to, mid, curbat, .. } => {
+            Shape::Arrow { from, to, mid, curved, .. } | Shape::Line { from, to, mid, curved, .. } => {
                 let mut r = Rect::NOTHING;
-                for q in curve_poly(*from, *to, mid, *curbat) {
+                for q in curve_poly(*from, *to, mid, *curved) {
                     r.extend_with(q);
                 }
                 r
@@ -1294,16 +1294,16 @@ impl Shape {
                 }
             }
             // dragging a middle node curves the line for good, as in ShareX
-            Shape::Arrow { from, to, mid, curbat, .. } | Shape::Line { from, to, mid, curbat, .. } => {
+            Shape::Arrow { from, to, mid, curved, .. } | Shape::Line { from, to, mid, curved, .. } => {
                 if idx == 0 {
                     *from = p;
                 } else if idx > mid.len() {
                     *to = p;
                 } else {
                     mid[idx - 1] = p;
-                    *curbat = true;
+                    *curved = true;
                 }
-                auto_mid(*from, *to, mid, *curbat);
+                auto_mid(*from, *to, mid, *curved);
             }
             Shape::Free { .. } | Shape::Step { .. } => {}
         }
@@ -1414,8 +1414,8 @@ impl Shape {
                 (n - 1.0).abs() * rx.min(ry) <= tol.max(*width)
             }
             // on a curved line the hit test follows the curve, not the chord
-            Shape::Arrow { from, to, mid, curbat, width, .. }
-            | Shape::Line { from, to, mid, curbat, width, .. } => curve_poly(*from, *to, mid, *curbat)
+            Shape::Arrow { from, to, mid, curved, width, .. }
+            | Shape::Line { from, to, mid, curved, width, .. } => curve_poly(*from, *to, mid, *curved)
                 .windows(2)
                 .any(|w| dist_seg(p, w[0], w[1]) <= tol.max(*width)),
             Shape::Free { pts, width, .. } => pts

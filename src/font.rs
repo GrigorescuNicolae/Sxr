@@ -272,7 +272,7 @@ fn pick_file(family: &str, bold: bool, italic: bool) -> Option<(PathBuf, bool)> 
 /// The fallback face: DejaVu Sans embedded in the binary.
 fn fallback(bold: bool) -> Face {
     let data = if bold { BOLD } else { REGULAR };
-    let font = FontVec::try_from_vec(data.to_vec()).expect("DejaVu încorporat invalid");
+    let font = FontVec::try_from_vec(data.to_vec()).expect("embedded DejaVu is invalid");
     Face {
         font: Rc::new(font),
         egui: if bold { FAM_BOLD } else { FAM }.to_owned(),

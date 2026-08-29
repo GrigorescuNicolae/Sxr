@@ -101,7 +101,7 @@ pub fn toolbar_shot(path: &str) -> Result<()> {
         let mut acts = Vec::new();
         // the panels need a `Ui`, which we do not have here, so we put the bar in
         // an area with the panel background, so it looks like it does in the app
-        egui::Area::new("bara".into())
+        egui::Area::new("bar".into())
             .fixed_pos(Pos2::ZERO)
             .show(ctx, |ui| {
                 let fill = ui.visuals().panel_fill;
@@ -123,10 +123,10 @@ pub fn balloon_shot(dir: &str) -> Result<()> {
     let bg = RgbaImage::from_pixel(w, h, image::Rgba([0, 0, 0, 255]));
     let s = demo_balloon();
 
-    shot(&format!("{dir}/balon-preview.png"), w, h, |ctx, _| {
+    shot(&format!("{dir}/balloon-preview.png"), w, h, |ctx, _| {
         // our own black background: `shot` would otherwise leave magenta, and the
         // comparison with the export needs exactly the same pixels under the shape
-        egui::Area::new("balon".into())
+        egui::Area::new("balloon".into())
             .fixed_pos(Pos2::ZERO)
             .show(ctx, |ui| {
                 let p = ui.painter();
@@ -139,11 +139,11 @@ pub fn balloon_shot(dir: &str) -> Result<()> {
             });
     })?;
 
-    let path = format!("{dir}/balon-export.png");
+    let path = format!("{dir}/balloon-export.png");
     // no shadow: the canvas preview draws it separately, not in `Shape::draw`
     let png = render::compose_opts(&bg, std::slice::from_ref(&s), false)?;
     std::fs::write(&path, &png).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
-    println!("scris {path}");
+    println!("wrote {path}");
     Ok(())
 }
 
@@ -168,7 +168,7 @@ fn make_test_stickers(root: &Path, loose: &[&str]) -> Result<()> {
         ];
         write_test_png(&root.join(n), 96, c)?;
     }
-    for (pack, names) in [("animale", ["pisica.png", "caine.png"]), ("simboluri", ["bifa.png", "cruce.png"])] {
+    for (pack, names) in [("animals", ["cat.png", "dog.png"]), ("symbols", ["check.png", "cross.png"])] {
         let dir = root.join(pack);
         std::fs::create_dir_all(&dir)?;
         for (i, n) in names.iter().enumerate() {
@@ -194,16 +194,16 @@ pub fn sticker_shot(path: &str) -> Result<()> {
         &[
             "blobbanhammer.png",
             "blobconcernedreading.png",
-            "bifa.png",
-            "atentie.png",
-            "foc.png",
-            "girofar.png",
-            "inima.png",
+            "check.png",
+            "warning.png",
+            "fire.png",
+            "beacon.png",
+            "heart.png",
             "ok.png",
-            "ras.png",
-            "stea.png",
-            "trist.png",
-            "victorie.png",
+            "laugh.png",
+            "star.png",
+            "sad.png",
+            "victory.png",
         ],
     )?;
     shot(path, 700, 560, move |ctx, ed| {
@@ -226,129 +226,129 @@ pub fn sticker_flow_test() -> Result<()> {
     std::fs::create_dir_all(&cfg)?;
     // SAFETY: there are no other threads yet that could read the environment
     unsafe { std::env::set_var("XDG_CONFIG_HOME", &cfg) };
-    println!("configurare de proba: {}", config::path().display());
+    println!("test configuration: {}", config::path().display());
     let root = tmp.join("stickers");
-    make_test_stickers(&root, &["arici.png", "balena.png", "Zebra.png"])?;
+    make_test_stickers(&root, &["hedgehog.png", "whale.png", "Zebra.png"])?;
     let mut fail = 0usize;
 
     // 1. the packs: root first, then the subfolders in alphabetical order
     let packs = sticker_packs(&root);
     let names: Vec<&str> = packs.iter().map(|(n, _)| n.as_str()).collect();
-    let ok = names == [t(Msg::StickerAllPacks), "animale", "simboluri"];
-    ck(&mut fail, ok, format!("1 pachete: {names:?}"));
+    let ok = names == [t(Msg::StickerAllPacks), "animals", "symbols"];
+    ck(&mut fail, ok, format!("1 packs: {names:?}"));
 
     // 2. a root with no loose files is not a pack any more
-    let gol = tmp.join("stickers-gol");
-    std::fs::create_dir_all(gol.join("unu"))?;
-    write_test_png(&gol.join("unu").join("x.png"), 32, [10, 20, 30])?;
-    let pg = sticker_packs(&gol);
+    let empty = tmp.join("stickers-empty");
+    std::fs::create_dir_all(empty.join("one"))?;
+    write_test_png(&empty.join("one").join("x.png"), 32, [10, 20, 30])?;
+    let pg = sticker_packs(&empty);
     let p2: Vec<&str> = pg.iter().map(|(n, _)| n.as_str()).collect();
-    let ok = p2 == ["unu"];
-    ck(&mut fail, ok, format!("2 radacina fara fisiere libere nu e pachet: {p2:?}"));
+    let ok = p2 == ["one"];
+    ck(&mut fail, ok, format!("2 root without loose files is not a pack: {p2:?}"));
 
     // 3. the files of one pack, sorted
     let files = sticker_files(&root);
-    ck(&mut fail, files.len() == 3, format!("3 radacina are {} fisiere", files.len()));
-    let sortate = files.windows(2).all(|w| w[0] <= w[1]);
-    ck(&mut fail, sortate, format!("3 lista e sortata: {sortate}"));
+    ck(&mut fail, files.len() == 3, format!("3 root has {} files", files.len()));
+    let sorted = files.windows(2).all(|w| w[0] <= w[1]);
+    ck(&mut fail, sorted, format!("3 list is sorted: {sorted}"));
 
     // 4. filtering: over the whole path, case-insensitive
-    let animale = sticker_files(&root.join("animale"));
-    let h = sticker_filter(&animale, "PIS");
-    let ok = h.len() == 1 && animale[h[0]].ends_with("pisica.png");
-    ck(&mut fail, ok, format!("4 PIS gaseste pisica: {} rezultate", h.len()));
-    let h = sticker_filter(&animale, "animale");
-    ck(&mut fail, h.len() == 2, format!("4 numele pachetului ia tot pachetul: {}", h.len()));
-    let h = sticker_filter(&animale, "zzz");
-    ck(&mut fail, h.is_empty(), format!("4 cautare fara rezultat: {}", h.len()));
-    let h = sticker_filter(&animale, "   ");
-    ck(&mut fail, h.len() == 2, format!("4 cautare goala arata tot: {}", h.len()));
+    let animals = sticker_files(&root.join("animals"));
+    let h = sticker_filter(&animals, "CAT");
+    let ok = h.len() == 1 && animals[h[0]].ends_with("cat.png");
+    ck(&mut fail, ok, format!("4 CAT finds cat: {} results", h.len()));
+    let h = sticker_filter(&animals, "animals");
+    ck(&mut fail, h.len() == 2, format!("4 the pack name takes the whole pack: {}", h.len()));
+    let h = sticker_filter(&animals, "zzz");
+    ck(&mut fail, h.is_empty(), format!("4 search with no result: {}", h.len()));
+    let h = sticker_filter(&animals, "   ");
+    ck(&mut fail, h.len() == 2, format!("4 an empty search shows everything: {}", h.len()));
 
     // 5. after each key the first result is preselected, and Enter takes it
     let ctx = egui::Context::default();
     let mut ed = Editor::new(&ctx, RgbaImage::new(400, 300));
     ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
-    let d = ed.dialog.as_mut().expect("fereastra de stickere");
+    let d = ed.dialog.as_mut().expect("sticker window");
     d.sticker.sel = 2;
-    d.sticker.query = "BALE".into();
+    d.sticker.query = "WHA".into();
     d.sticker.refilter();
     let sd = &d.sticker;
     let ok = sd.hits.len() == 1 && sd.sel == 0;
-    ck(&mut fail, ok, format!("5 preselectie: {} rezultate, sel={}", sd.hits.len(), sd.sel));
+    ck(&mut fail, ok, format!("5 preselection: {} results, sel={}", sd.hits.len(), sd.sel));
     let first = sd.first_hit();
-    let ok = first.as_deref().is_some_and(|p| p.ends_with("balena.png"));
-    ck(&mut fail, ok, format!("5 Enter ia primul rezultat: {first:?}"));
+    let ok = first.as_deref().is_some_and(|p| p.ends_with("whale.png"));
+    ck(&mut fail, ok, format!("5 Enter takes the first result: {first:?}"));
 
     // 6. the size: saved and read back; anything outside 16..=256 falls to 64
-    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    let mut d = ed.dialog.take().expect("sticker window");
     d.sticker.size = 128.0;
     d.sticker.picked = first.clone();
     ed.sticker_done(&ctx, d.sticker, false);
     let v = sticker_size_saved();
-    ck(&mut fail, v == 128.0, format!("6 marimea salvata se reciteste: {v}"));
-    for (scris, astept) in [("999", 64.0), ("0", 64.0), ("abc", 64.0), ("16", 16.0), ("256", 256.0)] {
-        config::set(K_STICKER_SIZE, scris);
+    ck(&mut fail, v == 128.0, format!("6 the saved size is read back: {v}"));
+    for (written, expected) in [("999", 64.0), ("0", 64.0), ("abc", 64.0), ("16", 16.0), ("256", 256.0)] {
+        config::set(K_STICKER_SIZE, written);
         let v = sticker_size_saved();
-        ck(&mut fail, v == astept, format!("6 marimea scrisa {scris} -> {v} (asteptat {astept})"));
+        ck(&mut fail, v == expected, format!("6 size written {written} -> {v} (expected {expected})"));
     }
-    ck(&mut fail, ed.shapes.is_empty(), format!("6 renuntarea nu insereaza: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.shapes.is_empty(), format!("6 cancelling does not insert: {} shapes", ed.shapes.len()));
 
     // 7. the pack is remembered by name, not by index
-    config::set(K_STICKER_PACK, "simboluri");
+    config::set(K_STICKER_PACK, "symbols");
     ed.open_sticker(root.clone(), Pos2::ZERO, false);
     let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
-    ck(&mut fail, i == 2, format!("7 pachetul salvat e ales: {i}"));
-    config::set(K_STICKER_PACK, "un-folder-sters");
+    ck(&mut fail, i == 2, format!("7 the saved pack is selected: {i}"));
+    config::set(K_STICKER_PACK, "a-deleted-folder");
     ed.open_sticker(root.clone(), Pos2::ZERO, false);
     let i = ed.dialog.as_ref().map(|d| d.sticker.pack).unwrap_or(9);
-    ck(&mut fail, i == 0, format!("7 pachetul disparut cade pe primul: {i}"));
+    ck(&mut fail, i == 0, format!("7 the missing pack falls back to the first: {i}"));
 
     // 8. picking inserts a square of the requested side, at the click point
     ed.open_sticker(root.clone(), Pos2::new(40.0, 50.0), false);
-    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    let mut d = ed.dialog.take().expect("sticker window");
     d.sticker.size = 48.0;
-    d.sticker.picked = Some(root.join("arici.png"));
+    d.sticker.picked = Some(root.join("hedgehog.png"));
     ed.sticker_done(&ctx, d.sticker, true);
-    ck(&mut fail, ed.shapes.len() == 1, format!("8 dupa alegere: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.shapes.len() == 1, format!("8 after picking: {} shapes", ed.shapes.len()));
     match ed.shapes.first() {
         Some(Shape::Img { rect, .. }) => {
             let ok = (rect.min.x - 40.0).abs() < 0.01
                 && (rect.min.y - 50.0).abs() < 0.01
                 && (rect.width() - 48.0).abs() < 0.01
                 && (rect.height() - 48.0).abs() < 0.01;
-            ck(&mut fail, ok, format!("8 patrat de 48 in punctul de clic: {rect:?}"));
+            ck(&mut fail, ok, format!("8 48px square at the click point: {rect:?}"));
         }
-        _ => ck(&mut fail, false, "8 forma inserata nu e imagine".into()),
+        _ => ck(&mut fail, false, "8 the inserted shape is not an image".into()),
     }
 
     // 9. the request from the menu recenters the shape on the image
     ed.delete_all();
     ed.open_sticker(root.clone(), Pos2::new(0.0, 0.0), true);
-    let mut d = ed.dialog.take().expect("fereastra de stickere");
+    let mut d = ed.dialog.take().expect("sticker window");
     d.sticker.size = 64.0;
-    d.sticker.picked = Some(root.join("arici.png"));
+    d.sticker.picked = Some(root.join("hedgehog.png"));
     ed.sticker_done(&ctx, d.sticker, true);
     match ed.shapes.first() {
         Some(Shape::Img { rect, .. }) => {
             let c = rect.center();
             let ok = (c.x - 200.0).abs() < 0.01 && (c.y - 150.0).abs() < 0.01;
-            ck(&mut fail, ok, format!("9 centrat pe imagine: {c:?}"));
+            ck(&mut fail, ok, format!("9 centered on the image: {c:?}"));
         }
-        _ => ck(&mut fail, false, "9 nicio forma dupa cererea din meniu".into()),
+        _ => ck(&mut fail, false, "9 no shape after the menu request".into()),
     }
 
     // 10. cancelling, with a sticker already under the cursor, inserts nothing
     ed.delete_all();
     ed.open_sticker(root.clone(), Pos2::new(10.0, 10.0), false);
-    let mut d = ed.dialog.take().expect("fereastra de stickere");
-    d.sticker.picked = Some(root.join("arici.png"));
+    let mut d = ed.dialog.take().expect("sticker window");
+    d.sticker.picked = Some(root.join("hedgehog.png"));
     ed.sticker_done(&ctx, d.sticker, false);
-    ck(&mut fail, ed.shapes.is_empty(), format!("10 renuntare: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.shapes.is_empty(), format!("10 cancel: {} shapes", ed.shapes.len()));
 
     if fail > 0 {
-        anyhow::bail!("{fail} verificari esuate");
+        anyhow::bail!("{fail} checks failed");
     }
-    println!("totul e bine");
+    println!("all good");
     Ok(())
 }
 
@@ -358,7 +358,7 @@ fn demo_balloon() -> Shape {
     Shape::Balloon {
         rect: Rect::from_min_max(Pos2::new(40.0, 30.0), Pos2::new(250.0, 130.0)),
         tail: Pos2::new(70.0, 200.0),
-        text: "Salut".into(),
+        text: "Hello".into(),
         opts: shape::TextOpts::default(),
         fill: Color32::from_rgb(0, 0, 255),
         border: Color32::from_rgb(0, 255, 0),
@@ -372,7 +372,7 @@ fn ck(fail: &mut usize, ok: bool, msg: String) {
     if !ok {
         *fail += 1;
     }
-    println!("{} {msg}", if ok { "OK" } else { "ESUAT" });
+    println!("{} {msg}", if ok { "OK" } else { "FAILED" });
 }
 
 /// Non-interactive check of the "speech balloon" tool (`--balloon-flow`): it
@@ -389,46 +389,46 @@ pub fn balloon_flow_test() -> Result<()> {
     ed.draft = ed.new_draft(Pos2::new(40.0, 30.0));
     ed.update_draft(Pos2::new(250.0, 130.0));
     ed.commit_draft();
-    ck(&mut fail, ed.shapes.len() == 1, format!("1 tragere: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.shapes.len() == 1, format!("1 drag: {} shapes", ed.shapes.len()));
     let is_balloon = matches!(ed.shapes.first(), Some(Shape::Balloon { .. }));
-    ck(&mut fail, is_balloon, format!("1 forma e balon: {is_balloon}"));
+    ck(&mut fail, is_balloon, format!("1 the shape is a balloon: {is_balloon}"));
     let dlg = ed.dialog.as_ref().map(|d| d.kind == DlgKind::Text) == Some(true);
-    ck(&mut fail, dlg, format!("1 fereastra de text deschisa: {dlg}"));
-    ck(&mut fail, ed.sel.is_none(), format!("1 sel cat e fereastra deschisa: {:?}", ed.sel));
+    ck(&mut fail, dlg, format!("1 text window open: {dlg}"));
+    ck(&mut fail, ed.sel.is_none(), format!("1 sel while the window is open: {:?}", ed.sel));
 
     // 2. closing with text: the shape stays, the text lands in it, nodes return
-    let mut d = ed.dialog.take().expect("fereastra de text");
-    d.text.buf = "Salut".into();
+    let mut d = ed.dialog.take().expect("text window");
+    d.text.buf = "Hello".into();
     ed.text_done(d.text, true);
-    let txt = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Salut");
-    ck(&mut fail, txt, format!("2 textul a ajuns in forma: {txt}"));
-    ck(&mut fail, ed.shapes.len() == 1, format!("2 forma a ramas: {} forme", ed.shapes.len()));
-    ck(&mut fail, ed.sel == Some(0), format!("2 sel dupa OK: {:?}", ed.sel));
+    let txt = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Hello");
+    ck(&mut fail, txt, format!("2 the text landed in the shape: {txt}"));
+    ck(&mut fail, ed.shapes.len() == 1, format!("2 the shape stayed: {} shapes", ed.shapes.len()));
+    ck(&mut fail, ed.sel == Some(0), format!("2 sel after OK: {:?}", ed.sel));
 
     // 3. cancelling on a freshly drawn shape: it goes, nothing else does
     ed.draft = ed.new_draft(Pos2::new(40.0, 160.0));
     ed.update_draft(Pos2::new(250.0, 260.0));
     ed.commit_draft();
-    let d = ed.dialog.take().expect("fereastra de text");
+    let d = ed.dialog.take().expect("text window");
     ed.text_done(d.text, false);
     let n = ed.shapes.len();
-    ck(&mut fail, n == 1, format!("3 dupa renuntare raman {n} forme"));
-    let keep = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Salut");
-    ck(&mut fail, keep, format!("3 balonul dinainte e neatins: {keep}"));
+    ck(&mut fail, n == 1, format!("3 after cancelling {n} shapes remain"));
+    let keep = matches!(ed.shapes.first(), Some(Shape::Balloon { text, .. }) if text == "Hello");
+    ck(&mut fail, keep, format!("3 the earlier balloon is untouched: {keep}"));
 
     // 4. a plain click, without dragging: the degenerate box gets the
     // default size, exactly as text boxes do
     let click = matches!(Tool::SpeechBalloon, Tool::Step) || Tool::SpeechBalloon.is_text();
-    ck(&mut fail, click, format!("4 clicul simplu plaseaza balonul: {click}"));
+    ck(&mut fail, click, format!("4 a single click places the balloon: {click}"));
     let at = Pos2::new(40.0, 160.0);
     ed.draft = ed.new_draft(at);
     ed.commit_draft();
-    ck(&mut fail, ed.shapes.len() == 2, format!("4 dupa clic: {} forme", ed.shapes.len()));
+    ck(&mut fail, ed.shapes.len() == 2, format!("4 after the click: {} shapes", ed.shapes.len()));
     if let Some(Shape::Balloon { rect, .. }) = ed.shapes.get(1) {
         let ok = rect.width() > 12.0 && rect.height() > 12.0;
-        ck(&mut fail, ok, format!("4 caseta implicita {}x{}", rect.width(), rect.height()));
+        ck(&mut fail, ok, format!("4 default box {}x{}", rect.width(), rect.height()));
     } else {
-        ck(&mut fail, false, "4 clicul n-a lasat niciun balon".into());
+        ck(&mut fail, false, "4 the click left no balloon".into());
     }
     if let Some(d) = ed.dialog.take() {
         ed.text_done(d.text, false);
@@ -437,36 +437,36 @@ pub fn balloon_flow_test() -> Result<()> {
     // 5. the nodes: 8 from the rectangle plus the tail tip
     let s = ed.shapes[0].clone();
     let n = s.handles().len();
-    ck(&mut fail, n == 9, format!("5 noduri: {n}"));
+    ck(&mut fail, n == 9, format!("5 handles: {n}"));
     let (r0, t0) = balloon_parts(&s);
     let mut s8 = s.clone();
     s8.move_handle(8, Pos2::new(300.0, 280.0));
     let (r8, t8) = balloon_parts(&s8);
     let only_tail = r8 == r0 && t8 == Pos2::new(300.0, 280.0);
-    ck(&mut fail, only_tail, format!("5 nodul 8 muta doar coada: {r8:?} / {t8:?}"));
+    ck(&mut fail, only_tail, format!("5 handle 8 moves only the tail: {r8:?} / {t8:?}"));
     let mut s0 = s.clone();
     s0.move_handle(0, Pos2::new(10.0, 10.0));
     let (r1, t1) = balloon_parts(&s0);
     let only_box = r1 != r0 && t1 == t0;
-    ck(&mut fail, only_box, format!("5 nodul 0 muta doar caseta: {r1:?} / {t1:?}"));
+    ck(&mut fail, only_box, format!("5 handle 0 moves only the box: {r1:?} / {t1:?}"));
 
     // 6. the tail placed at commit: below the bottom-left corner, with its base
     // on the bottom edge of the box and the tip right at the tail point
     let sub = (t0.y - r0.bottom() - 30.0).abs() < 0.01 && (t0.x - r0.left()).abs() < 0.01;
     let lb = r0.left_bottom();
-    ck(&mut fail, sub, format!("6 coada {t0:?} sub coltul stanga-jos {lb:?}"));
+    ck(&mut fail, sub, format!("6 tail {t0:?} below the bottom-left corner {lb:?}"));
     let tl = shape::balloon_tail(r0, t0);
     let base_ok = tl.base[0] != tl.base[1]
         && (tl.base[0].y - r0.bottom()).abs() < 0.01
         && (tl.base[1].y - r0.bottom()).abs() < 0.01;
     let (b0, b1) = (tl.base[0], tl.base[1]);
-    ck(&mut fail, base_ok, format!("6 baza pe latura de jos: {b0:?} - {b1:?}"));
-    ck(&mut fail, tl.tip == t0, format!("6 varful e chiar coada: {:?}", tl.tip));
+    ck(&mut fail, base_ok, format!("6 base on the bottom edge: {b0:?} - {b1:?}"));
+    ck(&mut fail, tl.tip == t0, format!("6 tip is the tail itself: {:?}", tl.tip));
 
     if fail > 0 {
-        anyhow::bail!("{fail} verificari esuate");
+        anyhow::bail!("{fail} checks failed");
     }
-    println!("totul e bine");
+    println!("all good");
     Ok(())
 }
 
@@ -578,7 +578,7 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
         }
     }
     img.save(path).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
-    println!("scris {path}");
+    println!("wrote {path}");
     Ok(())
 }
 
@@ -1452,7 +1452,7 @@ impl Editor {
                 from: at,
                 to: at,
                 mid: vec![at; o.line_mid],
-                curbat: false,
+                curved: false,
                 color: o.border,
                 width: o.border_size,
             },
@@ -1460,7 +1460,7 @@ impl Editor {
                 from: at,
                 to: at,
                 mid: vec![at; o.line_mid],
-                curbat: false,
+                curved: false,
                 color: o.border,
                 width: o.border_size,
             },
@@ -1555,10 +1555,10 @@ impl Editor {
                 | Shape::Text { rect, .. },
             ) => rect.max = at,
             Some(
-                Shape::Arrow { from, to, mid, curbat, .. } | Shape::Line { from, to, mid, curbat, .. },
+                Shape::Arrow { from, to, mid, curved, .. } | Shape::Line { from, to, mid, curved, .. },
             ) => {
                 *to = at;
-                shape::auto_mid(*from, *to, mid, *curbat);
+                shape::auto_mid(*from, *to, mid, *curved);
             }
             Some(Shape::Free { pts, .. }) => {
                 if pts.last().is_none_or(|l| l.distance(at) > 1.0) {
@@ -2985,11 +2985,11 @@ impl Editor {
 
                     // the outline has a hole in the middle, the fill and the highlight
                     // do not — exactly the three icons from ShareX
-                    color_button(ui, "contur", self.border_mut(), 8.0, t(Msg::TipBorderColor));
-                    color_button(ui, "umplere", self.fill_mut(), 0.0, t(Msg::TipFillColor));
+                    color_button(ui, "outline", self.border_mut(), 8.0, t(Msg::TipBorderColor));
+                    color_button(ui, "fill", self.fill_mut(), 0.0, t(Msg::TipFillColor));
                     color_button(
                         ui,
-                        "evidentiere",
+                        "highlight",
                         &mut self.opt.highlight,
                         0.0,
                         t(Msg::TipHighlightColor),
