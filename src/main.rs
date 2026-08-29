@@ -5,6 +5,7 @@ mod config;
 mod font;
 mod i18n;
 mod icons;
+mod mainwin;
 mod overlay;
 mod render;
 mod selector;
@@ -98,6 +99,13 @@ fn real_main() -> anyhow::Result<()> {
     if arg.as_deref() == Some("--bar-test") {
         let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/bar.png".into());
         return app::toolbar_shot(&out);
+    }
+    if arg.as_deref() == Some("--main") {
+        return mainwin::run();
+    }
+    if arg.as_deref() == Some("--mainwin-shot") {
+        let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/mainwin.png".into());
+        return mainwin::shot(&out);
     }
     if arg.as_deref() == Some("--i18n-check") {
         // with an extra language code the mode also writes the choice to the

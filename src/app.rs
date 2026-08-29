@@ -39,9 +39,9 @@ const NODE_HIT: f32 = 24.0;
 /// difference from the background: our panel is darker than the ShareX bar
 /// (#1B1B1B against #272727), so the transposed difference would give an
 /// almost invisible background.
-const SEL_BG: Color32 = Color32::from_rgb(0x33, 0x33, 0x33);
-const SEL_BORDER: Color32 = Color32::from_rgb(0x3F, 0x3F, 0x3F);
-const HOVER_BG: Color32 = Color32::from_rgb(0x2E, 0x2E, 0x2E);
+pub const SEL_BG: Color32 = Color32::from_rgb(0x33, 0x33, 0x33);
+pub const SEL_BORDER: Color32 = Color32::from_rgb(0x3F, 0x3F, 0x3F);
+pub const HOVER_BG: Color32 = Color32::from_rgb(0x2E, 0x2E, 0x2E);
 
 pub fn run(img: RgbaImage) -> Result<()> {
     let (w, h) = img.dimensions();
@@ -496,6 +496,21 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
     let ctx = egui::Context::default();
     font::install(&ctx);
     let mut ed = Editor::new(&ctx, RgbaImage::new(16, 16));
+    shot_ctx(path, sw, sh, &ctx, |c| draw(c, &mut ed))
+}
+
+/// The rasterizer behind every `--*-shot` mode: it drives an egui context on
+/// the CPU for a few frames and paints the triangles it emits into a PNG. The
+/// context comes from the caller because the state a mode draws is usually
+/// built from it (`Editor::new` wants one for its textures), and it has to be
+/// the same context the frames run on.
+pub fn shot_ctx(
+    path: &str,
+    sw: u32,
+    sh: u32,
+    ctx: &egui::Context,
+    mut draw: impl FnMut(&egui::Context),
+) -> Result<()> {
     let input = egui::RawInput {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(sw as f32, sh as f32))),
         ..Default::default()
@@ -509,7 +524,7 @@ fn shot(path: &str, sw: u32, sh: u32, mut draw: impl FnMut(&egui::Context, &mut 
     for _ in 0..16 {
         font::sync();
         ctx.begin_pass(input.clone());
-        draw(&ctx, &mut ed);
+        draw(ctx);
         let out = ctx.end_pass();
         for (id, deltas) in &out.textures_delta.set {
             for delta in deltas {
