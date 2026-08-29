@@ -246,6 +246,20 @@ pub fn sticker_flow_test() -> Result<()> {
     let ok = p2 == ["one"];
     ck(&mut fail, ok, format!("2 root without loose files is not a pack: {p2:?}"));
 
+    // a folder with no stickers in it is not a pack either: otherwise the tool
+    // would think the folder is not empty and open a window on an empty grid
+    std::fs::create_dir_all(empty.join("nothing"))?;
+    std::fs::write(empty.join("nothing").join("readme.txt"), b"not a sticker")?;
+    let pg = sticker_packs(&empty);
+    let p2: Vec<&str> = pg.iter().map(|(n, _)| n.as_str()).collect();
+    let ok = p2 == ["one"];
+    ck(&mut fail, ok, format!("2 a folder without stickers is not a pack: {p2:?}"));
+
+    let barren = tmp.join("stickers-barren");
+    std::fs::create_dir_all(barren.join("nothing"))?;
+    let pg = sticker_packs(&barren);
+    ck(&mut fail, pg.is_empty(), format!("2 only empty folders means no pack: {}", pg.len()));
+
     // 3. the files of one pack, sorted
     let files = sticker_files(&root);
     ck(&mut fail, files.len() == 3, format!("3 root has {} files", files.len()));
@@ -969,6 +983,10 @@ fn sticker_files(dir: &Path) -> Vec<PathBuf> {
 /// is one. The root goes into the list too — first — but only if it has loose
 /// files: that is where stickers land while nobody has grouped them yet, and
 /// there would be no other way to reach them.
+///
+/// A subfolder with no stickers in it is left out. Otherwise it would count as
+/// a pack, the tool would decide the folder is not empty, and the window would
+/// open on a grid with nothing in it.
 fn sticker_packs(root: &Path) -> Vec<(String, PathBuf)> {
     let mut subs: Vec<(String, PathBuf)> = std::fs::read_dir(root)
         .into_iter()
@@ -976,6 +994,7 @@ fn sticker_packs(root: &Path) -> Vec<(String, PathBuf)> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.is_dir())
+        .filter(|p| !sticker_files(p).is_empty())
         .filter_map(|p| Some((p.file_name()?.to_string_lossy().into_owned(), p)))
         .collect();
     subs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));

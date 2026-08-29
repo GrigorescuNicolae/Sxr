@@ -3463,6 +3463,8 @@ dependencies = [
  "image",
  "libc",
  "tiny-skia 0.12.0",
+ "wayland-client",
+ "wayland-protocols-wlr",
  "wl-clipboard-rs",
 ]
 

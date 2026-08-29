@@ -9,8 +9,11 @@ already in the clipboard.
 
 ## What it does
 
-- **Region capture**, copied to the clipboard automatically right after the
-  selection — close without editing and the capture is already there.
+- **Region capture** through a selector of our own: the screen is frozen first,
+  then a dimmed overlay goes over every monitor with crosshair guides and a
+  live size readout, and the rectangle is cut out of the frozen image. The
+  result is copied to the clipboard automatically right after the selection —
+  close without editing and the capture is already there.
 - **The classic editor**, with the toolbar in ShareX's order and the same icons:
   rectangle, ellipse, freehand, freehand arrow, line, arrow, text with outline,
   text with background, speech balloon, step counter, magnifier, image from
@@ -37,9 +40,11 @@ cargo build --release
 install -m755 target/release/sxr ~/.local/bin/sxr
 ```
 
-Requirements: Rust (2024 edition) and, for region capture, a Wayland session
-with the screenshot portal. The font list in the text window comes from
-`fc-list` (fontconfig); without it, DejaVu Sans is used.
+Requirements: Rust (2024 edition). Region capture needs `spectacle` for the
+screen grab and a Wayland compositor that speaks `zwlr_layer_shell_v1` for the
+overlay; where the overlay cannot come up, the selection falls back to
+spectacle's own selector. The font list in the text window comes from `fc-list`
+(fontconfig); without it, DejaVu Sans is used.
 
 ## Usage
 

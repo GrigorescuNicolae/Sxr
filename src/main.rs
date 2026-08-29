@@ -5,8 +5,13 @@ mod config;
 mod font;
 mod i18n;
 mod icons;
+mod overlay;
 mod render;
+mod selector;
+#[cfg(test)]
+mod selector_check;
 mod shape;
+mod windows;
 
 fn main() {
     if let Err(e) = real_main() {
@@ -108,6 +113,22 @@ fn real_main() -> anyhow::Result<()> {
         }
         return Ok(());
     }
+    if arg.as_deref() == Some("--capture-test") {
+        return capture_test();
+    }
+    if arg.as_deref() == Some("--windows-test") {
+        return windows_test();
+    }
+    if arg.as_deref() == Some("--sel-shot") {
+        let dir = std::env::args().nth(2).context("missing output directory")?;
+        return selector::sel_shot(&dir);
+    }
+    if arg.as_deref() == Some("--sel-flow") {
+        return selector::sel_flow();
+    }
+    if arg.as_deref() == Some("--input-test") {
+        return overlay::input_test();
+    }
     if arg.as_deref() == Some("--copy-test") {
         let path = std::env::args().nth(2).context("missing path")?;
         let img = image::open(&path)?.to_rgba8();
@@ -135,6 +156,42 @@ fn real_main() -> anyhow::Result<()> {
         }
     };
     app::run(img)
+}
+
+/// Hidden check mode for the screen grab: takes the whole desktop and prints
+/// the size and how long it took, nothing else. The pixels belong to the user,
+/// so they are dropped right away and never written anywhere.
+fn capture_test() -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let img = capture::grab_screen()?;
+    let dt = t0.elapsed();
+    println!("screen grab: {}x{} in {:.2}s", img.width(), img.height(), dt.as_secs_f32());
+    drop(img);
+    Ok(())
+}
+
+/// Hidden check mode for the window lookup: asks KWin what is on screen and
+/// prints the rectangles it came back with, front to back. Geometry only — the
+/// titles and the applications behind them are the user's business, not ours.
+/// No screenshot is taken here, so the lookup is started the way the selector
+/// starts it: `0, 0`, which clips to the outputs KWin itself reports.
+fn windows_test() -> anyhow::Result<()> {
+    // a budget well past the lookup's own, so a slow answer is still an answer
+    let budget = std::time::Duration::from_secs(2);
+
+    let t0 = std::time::Instant::now();
+    let rects = windows::spawn(0, 0).take(budget);
+    let dt = t0.elapsed();
+    println!("windows: {} in {} ms", rects.len(), dt.as_millis());
+    for (i, r) in rects.iter().enumerate() {
+        println!("  {i}  {},{}  {}x{}", r.x, r.y, r.w, r.h);
+    }
+    // the selector is meant to shrug an empty list off in silence, so the only
+    // place the reason for one can be shown is here
+    if rects.is_empty() {
+        windows::spawn(0, 0).take_result(budget)?;
+    }
+    Ok(())
 }
 
 /// Arrows at several widths, on a white background, so the head can be measured.
