@@ -52,6 +52,7 @@ spectacle's own selector. The font list in the text window comes from `fc-list`
 sxr             # select a region of the screen, then open the editor
 sxr <file>      # open an existing image directly
 sxr --main      # the main window (a layout shell for now, see below)
+sxr --settings  # the application settings window (a layout shell too)
 ```
 
 In practice you bind it to a global shortcut (`Ctrl+Print`, for example).
@@ -61,6 +62,11 @@ dropdowns and the task list, laid out from `MainForm.resx`. Every control is
 there and every control is disabled — it exists so the layout can be compared
 against the real thing while the features behind it are written, and each
 control comes alive as its feature lands.
+
+`--settings` does the same for ShareX's Application settings window, laid out
+from `ApplicationSettingsForm.resx`: the tree of twelve pages on the left and
+each page's controls on the right, all of them disabled, and clicking a page in
+the tree is the only thing that answers.
 
 Stickers are read from `~/.local/share/sxr/stickers/` — drop images there
 (`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`) and they show up in the sticker

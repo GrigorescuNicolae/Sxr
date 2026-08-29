@@ -11,6 +11,7 @@ mod render;
 mod selector;
 #[cfg(test)]
 mod selector_check;
+mod settings;
 mod shape;
 mod windows;
 
@@ -106,6 +107,13 @@ fn real_main() -> anyhow::Result<()> {
     if arg.as_deref() == Some("--mainwin-shot") {
         let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/mainwin.png".into());
         return mainwin::shot(&out);
+    }
+    if arg.as_deref() == Some("--settings") {
+        return settings::run();
+    }
+    if arg.as_deref() == Some("--settings-shot") {
+        let out = std::env::args().nth(2).unwrap_or_else(|| "/tmp/settings.png".into());
+        return settings::shot(&out);
     }
     if arg.as_deref() == Some("--i18n-check") {
         // with an extra language code the mode also writes the choice to the
